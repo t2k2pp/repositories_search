@@ -403,20 +403,20 @@
                         <button onclick="applySettingsAndReload()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors">
                             変更して取得
                         </button>
-                    </div>
-                </div>
-
-                <!-- Optional Personal Access Token for Rate Limit -->
+                    <!-- Optional Personal Access Token for Rate Limit -->
                 <div>
                     <div class="flex items-center justify-between mb-1.5">
                         <label class="block text-xs font-bold text-slate-700">GitHub Personal Access Token (ご本人・プライベート表示用)</label>
                         <span id="rateLimitDisplay" class="text-[11px] text-slate-500 font-medium">API残数: 未確認</span>
                     </div>
                     <input type="password" id="settingsTokenInput" placeholder="ghp_... または github_pat_... (未入力時は公開リポジトリのみ表示)" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
+                    <div id="tokenDiagnosticBox" class="mt-2 px-3 py-2 rounded-lg bg-slate-100 text-[11px] text-slate-600 flex items-center justify-between">
+                        <span id="tokenDiagnosticText">トークン状態: 未設定（公開リポジトリのみ取得）</span>
+                    </div>
                     <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-                        ※トークンはこのブラウザの <code class="bg-slate-100 px-1 rounded">localStorage</code> にのみ保存されます。<br>
-                        ・<strong>あなた（トークン設定時）</strong>：プライベートリポジトリも含めて自動取得・表示されます。<br>
-                        ・<strong>他の閲覧者（未設定・権限なし時）</strong>：エラーを出さず、閲覧権限のある公開リポジトリのみ安全に表示します。
+                        ※プライベートリポジトリを取得するには：<br>
+                        ・<strong>Classic Token (<code>ghp_...</code>)</strong>：<strong><code>repo</code></strong> スコープにチェックを入れてください。<br>
+                        ・<strong>Fine-grained Token (<code>github_pat_...</code>)</strong>：Repository access を「All repositories」にし、Permissions の <strong>Metadata (Read-only)</strong> と <strong>Contents (Read-only)</strong> を有効にしてください。
                     </p>
                 </div>
 
@@ -656,12 +656,26 @@
             try {
                 if (window.name && window.name.startsWith('{')) {
                     const parsed = JSON.parse(window.name);
-                    if (parsed && Array.isArray(parsed.repos) && parsed.repos.length > 0) {
+                    if (parsed && parsed.username === getCacheKey(username) && Array.isArray(parsed.repos) && parsed.repos.length > 0) {
                         return parsed;
                     }
                 }
             } catch (_) {}
             return null;
+        }
+
+        function updateTokenDiagnosticUI(message, isOk = null) {
+            const box = document.getElementById('tokenDiagnosticBox');
+            const text = document.getElementById('tokenDiagnosticText');
+            if (!box || !text) return;
+            text.textContent = message;
+            if (isOk === true) {
+                box.className = 'mt-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 flex items-center justify-between font-medium';
+            } else if (isOk === false) {
+                box.className = 'mt-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-center justify-between font-medium';
+            } else {
+                box.className = 'mt-2 px-3 py-2 rounded-lg bg-slate-100 text-[11px] text-slate-600 flex items-center justify-between';
+            }
         }
 
         function setRateLimitBanner(show, resetTimestamp = null) {
@@ -825,33 +839,43 @@
                 let hitRateLimit = false;
                 let rateLimitReset = null;
 
-                // 1. If token is configured, silently verify whether the viewer is the authenticated owner
+                // 1. If token is configured, verify token & automatically align owner username with authenticated user
                 if (state.token && state.token.trim() !== '') {
                     try {
                         const authRes = await fetch('https://api.github.com/user', {
-                            headers: getGitHubHeaders(false, true)
+                            headers: getGitHubHeaders(false, true),
+                            cache: 'no-store'
                         });
                         updateRateLimitFromResponse(authRes);
+                        const scopes = authRes.headers.get('x-oauth-scopes') || '';
+
                         if (authRes.ok) {
                             const authUser = await authRes.json();
                             state.authenticatedUser = authUser.login;
-                            if (authUser.login && authUser.login.toLowerCase() === username.toLowerCase()) {
-                                useAuthenticatedEndpoint = true;
-                                userProfile = authUser;
+                            useAuthenticatedEndpoint = true;
+                            userProfile = authUser;
+
+                            // When authenticated with a valid token, use the token owner's account if matching or default
+                            if (authUser.login && authUser.login.toLowerCase() !== state.username.toLowerCase()) {
+                                state.username = authUser.login;
                             }
+                            updateTokenDiagnosticUI(`認証成功: @${authUser.login} ${scopes ? `(スコープ: ${scopes})` : '(Fine-grained PAT)'}`, true);
                         } else {
                             state.authenticatedUser = null;
+                            updateTokenDiagnosticUI(`トークン認証失敗 (HTTP ${authRes.status}): トークン文字列を確認してください`, false);
                         }
                     } catch (_) {
                         state.authenticatedUser = null;
+                        updateTokenDiagnosticUI('トークン検証時に通信エラーが発生しました', false);
                     }
                 } else {
                     state.authenticatedUser = null;
+                    updateTokenDiagnosticUI('トークン状態: 未設定（公開リポジトリのみ取得）', null);
                 }
 
                 // 2. If not using the authenticated owner profile, fetch public profile safely
                 if (!useAuthenticatedEndpoint) {
-                    const userRes = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}`, {
+                    const userRes = await fetch(`https://api.github.com/users/${encodeURIComponent(state.username)}`, {
                         headers: getGitHubHeaders(false, false)
                     });
                     updateRateLimitFromResponse(userRes);
@@ -868,19 +892,21 @@
                 let page = 1;
                 let apiSucceeded = false;
 
-                while (page <= 3 && !hitRateLimit) {
+                while (page <= 5 && !hitRateLimit) {
+                    // Explicit visibility=all & affiliation=owner ensures both public and private repos are returned
                     const endpoint = useAuthenticatedEndpoint
-                        ? `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner`
-                        : `https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=updated`;
+                        ? `https://api.github.com/user/repos?visibility=all&affiliation=owner&per_page=100&page=${page}&sort=updated&_t=${Date.now()}`
+                        : `https://api.github.com/users/${encodeURIComponent(state.username)}/repos?per_page=100&page=${page}&sort=updated`;
 
                     let reposRes = await fetch(endpoint, {
-                        headers: getGitHubHeaders(false, useAuthenticatedEndpoint)
+                        headers: getGitHubHeaders(false, useAuthenticatedEndpoint),
+                        cache: 'no-store'
                     });
                     updateRateLimitFromResponse(reposRes);
 
                     if (!reposRes.ok && useAuthenticatedEndpoint) {
                         useAuthenticatedEndpoint = false;
-                        const fallbackUrl = `https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=updated`;
+                        const fallbackUrl = `https://api.github.com/users/${encodeURIComponent(state.username)}/repos?per_page=100&page=${page}&sort=updated`;
                         reposRes = await fetch(fallbackUrl, { headers: getGitHubHeaders(false, false) });
                         updateRateLimitFromResponse(reposRes);
                     }
@@ -901,7 +927,7 @@
                     page++;
                 }
 
-                allRepos = allRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === username.toLowerCase());
+                allRepos = allRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === state.username.toLowerCase());
                 const accessibleRepos = filterAccessibleRepos(allRepos);
 
                 // Critical guard: Never overwrite existing cached repos with 0 items when rate-limited or failed
@@ -928,8 +954,8 @@
 
                 // Only persist to IndexedDB & backup when we actually got repository items
                 if (state.repositories.length > 0) {
-                    await saveCachedRepos(username, state.repositories, userProfile);
-                    saveLocalBackup(username, state.repositories, userProfile);
+                    await saveCachedRepos(state.username, state.repositories, userProfile);
+                    saveLocalBackup(state.username, state.repositories, userProfile);
                     localStorage.setItem('gh_explorer_last_sync', Date.now().toString());
                 }
 
@@ -937,6 +963,12 @@
                 updateAllCountsAndRender();
 
                 const privateCount = state.repositories.filter(r => r.private).length;
+                if (useAuthenticatedEndpoint && privateCount === 0) {
+                    updateTokenDiagnosticUI(
+                        `認証済み (@${state.username}) ですがプライベート検出が 0 件です。トークンに repo 権限 (または Metadata/Contents 権限) があるか確認してください`,
+                        false
+                    );
+                }
                 const msg = privateCount > 0
                     ? `${state.repositories.length} 件（うちプライベート ${privateCount} 件）を取得・キャッシュしました`
                     : `${state.repositories.length} 件の公開リポジトリを取得・キャッシュしました`;
@@ -1039,7 +1071,8 @@
                 'Accept': acceptRaw ? 'application/vnd.github.v3.raw' : 'application/vnd.github.v3+json'
             };
             if (includeToken && state.token && state.token.trim() !== '') {
-                headers['Authorization'] = `token ${state.token.trim()}`;
+                const rawToken = state.token.trim().replace(/^(Bearer|token)\s+/i, '');
+                headers['Authorization'] = `Bearer ${rawToken}`;
             }
             return headers;
         }
@@ -1864,16 +1897,17 @@
         }
 
         async function saveTokenOnly() {
+            const newUsername = document.getElementById('settingsUsernameInput').value.trim();
+            if (newUsername) {
+                state.username = newUsername;
+                localStorage.setItem('gh_explorer_username', state.username);
+            }
             const newToken = document.getElementById('settingsTokenInput').value.trim();
-            const tokenChanged = newToken !== state.token;
             state.token = newToken;
             localStorage.setItem('gh_explorer_token', state.token);
             closeSettingsModal();
-            if (tokenChanged) {
-                await loadUserAndRepositories(true);
-            } else {
-                showToast('設定を保存しました', 'success');
-            }
+            // Always force a fresh reload when saving settings if a token is present
+            await loadUserAndRepositories(true);
         }
 
         async function applySettingsAndReload() {
