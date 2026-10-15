@@ -243,6 +243,9 @@
                             <i class="fa-solid fa-gear text-slate-500"></i>
                             <span>連携・キャッシュ設定</span>
                         </button>
+                        <button onclick="syncDiffRepositories(false)" title="キャッシュを残したまま未検出・プライベート・新規リポジトリを差分取得" class="py-1.5 px-2.5 bg-white hover:bg-emerald-50 text-slate-600 hover:text-emerald-600 border border-slate-200 rounded-lg text-xs font-medium transition-colors">
+                            <i class="fa-solid fa-cloud-arrow-down"></i>
+                        </button>
                         <button onclick="exportBackupJson()" title="キャッシュデータをJSONとして保存" class="py-1.5 px-2.5 bg-white hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 rounded-lg text-xs font-medium transition-colors">
                             <i class="fa-solid fa-download"></i>
                         </button>
@@ -282,6 +285,11 @@
 
                 <!-- Controls: README Scan Trigger, Sort Dropdown & View Switcher -->
                 <div class="flex items-center gap-2.5 self-end sm:self-auto">
+                    <button id="diffSyncBtn" onclick="syncDiffRepositories(false)" class="px-3 py-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-600 border border-slate-200 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-colors" title="既存キャッシュを保持したまま、未検出のリポジトリ（プライベート・新規作成）を差分チェックして追加します">
+                        <i id="diffSyncIcon" class="fa-solid fa-cloud-arrow-down text-emerald-500"></i>
+                        <span class="hidden md:inline">差分同期</span>
+                    </button>
+
                     <button id="scanReadmeBtn" onclick="scanAllReadmes(false)" class="px-3 py-1.5 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-600 border border-slate-200 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-colors" title="未チェックのREADME.mdを取得して空文字判定とタグ抽出を行います">
                         <i class="fa-brands fa-markdown text-blue-500"></i>
                         <span class="hidden md:inline">README一括解析</span>
@@ -401,9 +409,12 @@
                     <div class="flex gap-2">
                         <input type="text" id="settingsUsernameInput" value="" placeholder="username" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
                         <button onclick="applySettingsAndReload()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors">
-                            変更して取得
+                            変更して差分取得
                         </button>
-                    <!-- Optional Personal Access Token for Rate Limit -->
+                    </div>
+                </div>
+
+                <!-- Optional Personal Access Token for Rate Limit -->
                 <div>
                     <div class="flex items-center justify-between mb-1.5">
                         <label class="block text-xs font-bold text-slate-700">GitHub Personal Access Token (ご本人・プライベート表示用)</label>
@@ -430,14 +441,18 @@
                         <span class="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[11px] font-semibold">有効</span>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                        <button onclick="closeSettingsModal(); syncDiffRepositories(false);" class="py-2 px-3 bg-white hover:bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+                            <i class="fa-solid fa-cloud-arrow-down"></i>
+                            <span>未検出を差分取得</span>
+                        </button>
                         <button onclick="scanAllReadmes(true)" class="py-2 px-3 bg-white hover:bg-blue-50 text-blue-600 border border-blue-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
                             <i class="fa-brands fa-markdown"></i>
-                            <span>全READMEを再チェック</span>
+                            <span>全READMEを再解析</span>
                         </button>
                         <button onclick="confirmAndResetCache()" class="py-2 px-3 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
                             <i class="fa-solid fa-trash-can"></i>
-                            <span>キャッシュを完全リセット</span>
+                            <span>完全リセット</span>
                         </button>
                     </div>
 
@@ -719,8 +734,24 @@
                 const db = await openDatabase();
                 return new Promise((resolve) => {
                     const tx = db.transaction('user_repos', 'readonly');
-                    const req = tx.objectStore('user_repos').get(getCacheKey(username));
-                    req.onsuccess = () => resolve(req.result || null);
+                    const store = tx.objectStore('user_repos');
+                    const primaryKey = getCacheKey(username);
+                    const req = store.get(primaryKey);
+                    req.onsuccess = () => {
+                        if (req.result && Array.isArray(req.result.repos) && req.result.repos.length > 0) {
+                            resolve(req.result);
+                            return;
+                        }
+                        // Fallback: If user just added a token, inherit existing public cache so we don't lose anything
+                        const fallbackKey = `${username.toLowerCase()}__public`;
+                        if (primaryKey !== fallbackKey) {
+                            const fbReq = store.get(fallbackKey);
+                            fbReq.onsuccess = () => resolve(fbReq.result || null);
+                            fbReq.onerror = () => resolve(null);
+                        } else {
+                            resolve(null);
+                        }
+                    };
                     req.onerror = () => resolve(null);
                 });
             } catch (err) {
@@ -812,26 +843,51 @@
             return repos || [];
         }
 
-        async function loadUserAndRepositories(forceRefresh = false) {
-            showLoadingSkeleton();
+        // Merge existing cached repositories with newly fetched API repositories without losing any cached items
+        function mergeRepositoryLists(existingRepos, fetchedRepos) {
+            const repoMap = new Map();
+            const newlyDiscovered = [];
+            const updatedRepos = [];
+
+            (existingRepos || []).forEach(repo => {
+                if (repo && repo.full_name) {
+                    repoMap.set(repo.full_name.toLowerCase(), repo);
+                }
+            });
+
+            (fetchedRepos || []).forEach(freshRepo => {
+                if (!freshRepo || !freshRepo.full_name) return;
+                const key = freshRepo.full_name.toLowerCase();
+                const prev = repoMap.get(key);
+                if (!prev) {
+                    newlyDiscovered.push(freshRepo);
+                } else if (prev.pushed_at !== freshRepo.pushed_at || prev.updated_at !== freshRepo.updated_at) {
+                    updatedRepos.push(freshRepo);
+                }
+                repoMap.set(key, freshRepo);
+            });
+
+            const mergedList = Array.from(repoMap.values());
+            return {
+                mergedList,
+                newlyDiscovered,
+                updatedRepos
+            };
+        }
+
+        // Fetch repository list from GitHub API and merge only differences into existing cache
+        async function syncDiffRepositories(silent = false) {
+            const diffIcon = document.getElementById('diffSyncIcon');
+            if (diffIcon) diffIcon.classList.add('fa-bounce');
+
             const username = state.username.trim() || detectOwnerUsername();
             state.username = username;
 
-            // Load cached READMEs first
-            state.readmeMap = await getAllCachedReadmes();
-
-            // Always prepare existing cache/backup so we never overwrite valid data with 0 items on rate-limit
+            // Ensure existing cache is loaded first so we never lose it
             const existingCache = await getCachedRepos(username) || loadLocalBackup(username);
-
-            if (!forceRefresh && existingCache && existingCache.repos && existingCache.repos.length > 0) {
-                state.repositories = filterAccessibleRepos(existingCache.repos);
-                updateProfileUI(existingCache.userProfile, existingCache.updatedAt, true);
-                updateAllCountsAndRender();
-
-                // Auto background scan READMEs gently
-                triggerInitialReadmeCheckIfNeeded();
-                return;
-            }
+            const baseRepos = (state.repositories && state.repositories.length > 0)
+                ? state.repositories
+                : (existingCache?.repos || []);
 
             try {
                 let userProfile = existingCache?.userProfile || { login: username, name: username, avatar_url: `https://github.com/${username}.png` };
@@ -839,7 +895,7 @@
                 let hitRateLimit = false;
                 let rateLimitReset = null;
 
-                // 1. If token is configured, verify token & automatically align owner username with authenticated user
+                // 1. Verify token if present
                 if (state.token && state.token.trim() !== '') {
                     try {
                         const authRes = await fetch('https://api.github.com/user', {
@@ -855,7 +911,6 @@
                             useAuthenticatedEndpoint = true;
                             userProfile = authUser;
 
-                            // When authenticated with a valid token, use the token owner's account if matching or default
                             if (authUser.login && authUser.login.toLowerCase() !== state.username.toLowerCase()) {
                                 state.username = authUser.login;
                             }
@@ -873,7 +928,7 @@
                     updateTokenDiagnosticUI('トークン状態: 未設定（公開リポジトリのみ取得）', null);
                 }
 
-                // 2. If not using the authenticated owner profile, fetch public profile safely
+                // 2. Fetch public profile if unauthenticated
                 if (!useAuthenticatedEndpoint) {
                     const userRes = await fetch(`https://api.github.com/users/${encodeURIComponent(state.username)}`, {
                         headers: getGitHubHeaders(false, false)
@@ -887,16 +942,15 @@
                     }
                 }
 
-                // 3. Fetch repositories based on viewer permission
-                let allRepos = [];
+                // 3. Fetch repository pages from GitHub API
+                let fetchedRepos = [];
                 let page = 1;
                 let apiSucceeded = false;
 
                 while (page <= 5 && !hitRateLimit) {
-                    // Explicit visibility=all & affiliation=owner ensures both public and private repos are returned
                     const endpoint = useAuthenticatedEndpoint
-                        ? `https://api.github.com/user/repos?visibility=all&affiliation=owner&per_page=100&page=${page}&sort=updated&_t=${Date.now()}`
-                        : `https://api.github.com/users/${encodeURIComponent(state.username)}/repos?per_page=100&page=${page}&sort=updated`;
+                        ? `https://api.github.com/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&per_page=100&page=${page}&sort=updated&_t=${Date.now()}`
+                        : `https://api.github.com/users/${encodeURIComponent(state.username)}/repos?per_page=100&page=${page}&sort=updated&_t=${Date.now()}`;
 
                     let reposRes = await fetch(endpoint, {
                         headers: getGitHubHeaders(false, useAuthenticatedEndpoint),
@@ -922,37 +976,28 @@
                     const pageRepos = await reposRes.json();
                     if (!Array.isArray(pageRepos)) break;
                     apiSucceeded = true;
-                    allRepos = allRepos.concat(pageRepos);
+                    fetchedRepos = fetchedRepos.concat(pageRepos);
                     if (pageRepos.length < 100) break;
                     page++;
                 }
 
-                allRepos = allRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === state.username.toLowerCase());
-                const accessibleRepos = filterAccessibleRepos(allRepos);
+                // Keep repositories owned by user (or all accessible private/public repos when authenticated as owner)
+                fetchedRepos = fetchedRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === state.username.toLowerCase());
 
-                // Critical guard: Never overwrite existing cached repos with 0 items when rate-limited or failed
-                if ((!apiSucceeded || accessibleRepos.length === 0) && existingCache && existingCache.repos && existingCache.repos.length > 0) {
-                    state.repositories = filterAccessibleRepos(existingCache.repos);
-                    updateProfileUI(existingCache.userProfile || userProfile, existingCache.updatedAt, true);
-                    updateAllCountsAndRender();
+                if (!apiSucceeded) {
                     if (hitRateLimit) {
                         setRateLimitBanner(true, rateLimitReset);
-                        showToast('API制限中のため、保存済みのキャッシュデータを表示しています', 'info');
+                        if (!silent) showToast('API制限中のため、既存キャッシュを維持しています', 'info');
                     }
                     return;
                 }
 
-                if (hitRateLimit && accessibleRepos.length === 0) {
-                    setRateLimitBanner(true, rateLimitReset);
-                    showToast('GitHub APIのレート制限に達しています。少し待つかトークンを設定してください', 'error');
-                    updateAllCountsAndRender();
-                    return;
-                }
-
                 setRateLimitBanner(false);
-                state.repositories = accessibleRepos;
 
-                // Only persist to IndexedDB & backup when we actually got repository items
+                // 4. Diff & Merge with existing cached repositories (Never delete existing cached repos!)
+                const { mergedList, newlyDiscovered, updatedRepos } = mergeRepositoryLists(baseRepos, fetchedRepos);
+                state.repositories = filterAccessibleRepos(mergedList);
+
                 if (state.repositories.length > 0) {
                     await saveCachedRepos(state.username, state.repositories, userProfile);
                     saveLocalBackup(state.username, state.repositories, userProfile);
@@ -962,29 +1007,76 @@
                 updateProfileUI(userProfile, Date.now(), false);
                 updateAllCountsAndRender();
 
-                const privateCount = state.repositories.filter(r => r.private).length;
-                if (useAuthenticatedEndpoint && privateCount === 0) {
+                const newPrivateCount = newlyDiscovered.filter(r => r.private).length;
+                const totalPrivateCount = state.repositories.filter(r => r.private).length;
+
+                if (useAuthenticatedEndpoint && totalPrivateCount === 0) {
                     updateTokenDiagnosticUI(
-                        `認証済み (@${state.username}) ですがプライベート検出が 0 件です。トークンに repo 権限 (または Metadata/Contents 権限) があるか確認してください`,
+                        `認証済み (@${state.username}) ですがプライベート検出が 0 件です。トークンに repo 権限があるか確認してください`,
                         false
                     );
                 }
-                const msg = privateCount > 0
-                    ? `${state.repositories.length} 件（うちプライベート ${privateCount} 件）を取得・キャッシュしました`
-                    : `${state.repositories.length} 件の公開リポジトリを取得・キャッシュしました`;
-                showToast(msg, 'success');
 
-                // Automatically inspect READMEs in background
-                triggerInitialReadmeCheckIfNeeded();
+                // 5. Fetch READMEs ONLY for newly discovered or updated repositories
+                const readmeTargets = [
+                    ...newlyDiscovered,
+                    ...updatedRepos,
+                    ...state.repositories.filter(r => !state.readmeMap[r.full_name])
+                ];
+                // Deduplicate by full_name
+                const uniqueTargets = Array.from(new Map(readmeTargets.map(r => [r.full_name, r])).values());
 
-            } catch (error) {
-                console.warn('GitHub API fetch warning:', error);
-                if (existingCache && existingCache.repos && existingCache.repos.length > 0) {
-                    state.repositories = filterAccessibleRepos(existingCache.repos);
-                    updateProfileUI(existingCache.userProfile, existingCache.updatedAt, true);
+                if (newlyDiscovered.length > 0) {
+                    const detail = newPrivateCount > 0 ? `（うちプライベート ${newPrivateCount} 件）` : '';
+                    showToast(`未検出のリポジトリを ${newlyDiscovered.length} 件${detail}追加取得しました！`, 'success');
+                } else if (updatedRepos.length > 0) {
+                    if (!silent) showToast(`更新された ${updatedRepos.length} 件のリポジトリ情報を反映しました`, 'success');
+                } else if (!silent) {
+                    showToast(`差分チェック完了：未検出のリポジトリはありません（全 ${state.repositories.length} 件 / Private ${totalPrivateCount} 件）`, 'info');
                 }
-                updateAllCountsAndRender();
+
+                if (uniqueTargets.length > 0) {
+                    const limit = state.token ? uniqueTargets.length : Math.min(uniqueTargets.length, 8);
+                    await scanReadmeBatch(uniqueTargets.slice(0, limit));
+                }
+            } catch (err) {
+                console.warn('Diff sync error:', err);
+                if (!silent) showToast('差分同期中に通信エラーが発生しましたが、キャッシュは保持されています', 'error');
+            } finally {
+                if (diffIcon) diffIcon.classList.remove('fa-bounce');
             }
+        }
+
+        async function loadUserAndRepositories(forceDiffSync = false) {
+            showLoadingSkeleton();
+            const username = state.username.trim() || detectOwnerUsername();
+            state.username = username;
+
+            // Load cached READMEs first
+            state.readmeMap = await getAllCachedReadmes();
+
+            // Load existing cached repositories (also falls back to public cache when token is newly added)
+            const existingCache = await getCachedRepos(username) || loadLocalBackup(username);
+
+            if (existingCache && existingCache.repos && existingCache.repos.length > 0) {
+                state.repositories = filterAccessibleRepos(existingCache.repos);
+                updateProfileUI(existingCache.userProfile, existingCache.updatedAt, true);
+                updateAllCountsAndRender();
+
+                const hasToken = Boolean(state.token && state.token.trim() !== '');
+                const cachedPrivateCount = state.repositories.filter(r => r.private).length;
+
+                // If user forced sync, OR has a token configured but 0 private repos in cache yet, run non-destructive diff sync automatically!
+                if (forceDiffSync || (hasToken && cachedPrivateCount === 0)) {
+                    await syncDiffRepositories(!forceDiffSync);
+                } else {
+                    triggerInitialReadmeCheckIfNeeded();
+                }
+                return;
+            }
+
+            // No cache at all yet -> run initial sync
+            await syncDiffRepositories(false);
         }
 
         // Refresh a single repository's metadata and README.md without reloading everything
