@@ -1,0 +1,2071 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Repositories Search</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts: Inter & Noto Sans JP -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Marked.js for README Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        /* Markdown preview styling */
+        .markdown-body h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.75rem; padding-bottom: 0.3rem; border-bottom: 1px solid #e2e8f0; }
+        .markdown-body h2 { font-size: 1.25rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; padding-bottom: 0.25rem; border-bottom: 1px solid #f1f5f9; }
+        .markdown-body h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; }
+        .markdown-body p { margin-bottom: 0.75rem; line-height: 1.6; color: #334155; }
+        .markdown-body ul, .markdown-body ol { margin-bottom: 0.75rem; padding-left: 1.5rem; }
+        .markdown-body ul { list-style-type: disc; }
+        .markdown-body ol { list-style-type: decimal; }
+        .markdown-body code { background-color: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-size: 0.875em; font-family: monospace; }
+        .markdown-body pre { background-color: #0f172a; color: #f8fafc; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 1rem; }
+        .markdown-body pre code { background-color: transparent; color: inherit; padding: 0; }
+        .markdown-body a { color: #2563eb; text-decoration: underline; }
+        .markdown-body img { max-width: 100%; height: auto; border-radius: 0.375rem; margin: 0.5rem 0; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none sm:select-auto">
+
+    <!-- Top Header -->
+    <header class="h-16 bg-white border-b border-slate-200 px-4 lg:px-6 flex items-center justify-between shrink-0 z-20">
+        <!-- Left: Brand & Mobile Menu Toggle -->
+        <div class="flex items-center gap-3">
+            <button id="mobileMenuBtn" class="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100">
+                <i class="fa-solid fa-bars text-lg"></i>
+            </button>
+            <a href="#" onclick="resetAllFilters(); return false;" class="flex items-center gap-2.5 group">
+                <i class="fa-brands fa-github text-3xl text-slate-900 group-hover:text-blue-600 transition-colors"></i>
+                <span class="font-bold text-lg tracking-tight text-slate-800 hidden sm:inline">My Repositories Search</span>
+            </a>
+        </div>
+
+        <!-- Center: Global Search Bar -->
+        <div class="flex-1 max-w-xl mx-4">
+            <div class="relative flex items-center">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 text-slate-400 text-sm pointer-events-none"></i>
+                <input
+                    type="text"
+                    id="mainSearchInput"
+                    placeholder="リポジトリを検索（キーワード・タグ・説明・README本文など）..."
+                    class="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                >
+                <button id="clearSearchBtn" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 p-1">
+                    <i class="fa-solid fa-circle-xmark text-sm"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Right: Stats & User Profile -->
+        <div class="flex items-center gap-4">
+            <div class="hidden md:flex items-center gap-2 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/80">
+                <span>登録リポジトリ数</span>
+                <strong id="headerTotalCount" class="text-slate-800 font-semibold text-sm">0</strong>
+                <span>件</span>
+            </div>
+
+            <button onclick="openSettingsModal()" class="flex items-center gap-2.5 py-1 px-2 rounded-xl hover:bg-slate-100 transition-colors">
+                <img id="userAvatar" src="https://placehold.co/64x64/1e293b/ffffff?text=GH" onerror="this.src='https://placehold.co/64x64/1e293b/ffffff?text=GH'" alt="User Avatar" class="w-8 h-8 rounded-full border border-slate-200 object-cover">
+                <div class="hidden sm:flex flex-col items-start leading-tight">
+                    <span id="userNameDisplay" class="text-sm font-semibold text-slate-700">読み込み中...</span>
+                    <span id="cacheTimeDisplay" class="text-[10px] text-slate-400">キャッシュ確認中</span>
+                </div>
+                <i class="fa-solid fa-chevron-down text-xs text-slate-400 hidden sm:inline ml-1"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex-1 flex overflow-hidden relative">
+        <!-- Mobile Sidebar Backdrop -->
+        <div id="sidebarBackdrop" onclick="toggleMobileSidebar(false)" class="fixed inset-0 bg-slate-900/40 z-20 hidden lg:hidden backdrop-blur-xs"></div>
+
+        <!-- Left Sidebar Navigation -->
+        <aside id="sidebar" class="w-72 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 fixed lg:static inset-y-0 left-0 z-30 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out">
+            <!-- Scrollable Nav Area -->
+            <div class="flex-1 overflow-y-auto p-3.5 space-y-5">
+                <!-- Primary Navigation -->
+                <nav class="space-y-1">
+                    <button onclick="setNavFilter('all')" id="nav-all" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-colors bg-blue-50 text-blue-600">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-house w-4 text-center"></i>
+                            <span>ホーム（すべて）</span>
+                        </div>
+                        <span id="count-all" class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">0</span>
+                    </button>
+
+                    <button onclick="focusSearch()" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-magnifying-glass w-4 text-center"></i>
+                            <span>キーワード検索</span>
+                        </div>
+                        <kbd class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">/</kbd>
+                    </button>
+
+                    <button onclick="setNavFilter('favorites')" id="nav-favorites" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-regular fa-star w-4 text-center"></i>
+                            <span>お気に入り</span>
+                        </div>
+                        <span id="count-favorites" class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">0</span>
+                    </button>
+
+                    <button onclick="setNavFilter('recent')" id="nav-recent" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-regular fa-clock w-4 text-center"></i>
+                            <span>最近更新（30日以内）</span>
+                        </div>
+                        <span id="count-recent" class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">0</span>
+                    </button>
+
+                    <button onclick="setNavFilter('private')" id="nav-private" class="hidden nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-lock text-amber-600 w-4 text-center"></i>
+                            <span>プライベート</span>
+                        </div>
+                        <span id="count-private" class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">0</span>
+                    </button>
+                </nav>
+
+                <!-- README Status Filter -->
+                <div>
+                    <div class="px-3 mb-2 flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 tracking-wider uppercase">README.md 状態フィルタ</span>
+                    </div>
+                    <div class="space-y-1">
+                        <button onclick="setNavFilter('readme-valid')" id="nav-readme-valid" class="nav-btn w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                            <div class="flex items-center gap-2.5">
+                                <i class="fa-solid fa-file-circle-check text-emerald-500 w-4 text-center text-sm"></i>
+                                <span>README 記述あり（非空）</span>
+                            </div>
+                            <span id="count-readme-valid" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">0</span>
+                        </button>
+                        <button onclick="setNavFilter('readme-empty')" id="nav-readme-empty" class="nav-btn w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                            <div class="flex items-center gap-2.5">
+                                <i class="fa-solid fa-file-circle-xmark text-amber-500 w-4 text-center text-sm"></i>
+                                <span>README 空文字・未作成</span>
+                            </div>
+                            <span id="count-readme-empty" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">0</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Categories Section -->
+                <div>
+                    <div class="px-3 mb-2 flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 tracking-wider uppercase">カテゴリ</span>
+                    </div>
+                    <div id="categoryList" class="space-y-1">
+                        <!-- Dynamically rendered categories matching the mockup -->
+                    </div>
+                </div>
+
+                <!-- Extracted README Tags & Sidebar Text Filter -->
+                <div>
+                    <div class="px-3 mb-2 flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 tracking-wider uppercase">抽出タグ・言語フィルタ</span>
+                        <button onclick="clearTagFilter()" id="resetTagBtn" class="hidden text-[11px] text-blue-600 hover:underline">解除</button>
+                    </div>
+                    <!-- Sidebar Text Box Filter for Tags/Languages -->
+                    <div class="px-2 mb-2.5">
+                        <div class="relative">
+                            <i class="fa-solid fa-filter absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+                            <input
+                                type="text"
+                                id="tagFilterInput"
+                                placeholder="タグ・言語を絞り込み..."
+                                class="w-full pl-7 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white"
+                            >
+                        </div>
+                    </div>
+                    <div id="extractedTagsContainer" class="px-2 flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                        <!-- Dynamically rendered README & Topic tags -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom GitHub Connection Status Box -->
+            <div class="p-3.5 border-t border-slate-200 bg-slate-50/60">
+                <div class="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs">
+                    <div class="flex items-start gap-3 mb-2.5">
+                        <i class="fa-brands fa-github text-2xl text-slate-800 mt-0.5"></i>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-xs font-bold text-slate-800">GitHub 連携済み</span>
+                                <span id="syncIndicator" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            </div>
+                            <p id="sidebarSyncStatusText" class="text-[11px] text-slate-500 truncate mt-0.5">0 件のリポジトリを登録しています</p>
+                        </div>
+                    </div>
+
+                    <!-- README Scan Progress Bar -->
+                    <div id="readmeScanProgressBox" class="hidden mb-2.5">
+                        <div class="flex justify-between text-[10px] text-slate-500 mb-1">
+                            <span id="readmeScanText">README解析中...</span>
+                            <span id="readmeScanPercent">0%</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div id="readmeScanBar" class="h-full bg-blue-600 transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-1.5">
+                        <button onclick="openSettingsModal()" class="flex-1 py-1.5 px-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors">
+                            <i class="fa-solid fa-gear text-slate-500"></i>
+                            <span>連携・キャッシュ設定</span>
+                        </button>
+                        <button onclick="exportBackupJson()" title="キャッシュデータをJSONとして保存" class="py-1.5 px-2.5 bg-white hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 rounded-lg text-xs font-medium transition-colors">
+                            <i class="fa-solid fa-download"></i>
+                        </button>
+                        <button onclick="confirmAndResetCache()" title="キャッシュをリセットして再取得" class="py-1.5 px-2.5 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 rounded-lg text-xs font-medium transition-colors">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Main Content Area -->
+        <main class="flex-1 flex flex-col overflow-hidden bg-slate-50/70">
+            <!-- Rate Limit Warning Banner -->
+            <div id="rateLimitBanner" class="hidden bg-amber-50 border-b border-amber-200 px-4 sm:px-6 lg:px-8 py-2.5 items-center justify-between gap-3 text-xs text-amber-800 shrink-0">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                    <span id="rateLimitBannerText">GitHub APIの未認証アクセス制限（60回/時）に達したため、キャッシュまたはバックアップを表示しています。</span>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button onclick="openSettingsModal()" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold transition-colors">
+                        トークンを設定
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sub-Header / Toolbar -->
+            <div class="px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <i id="currentViewIcon" class="fa-solid fa-folder-open text-blue-600 text-lg"></i>
+                    <h1 id="currentViewTitle" class="text-lg sm:text-xl font-bold text-slate-800">すべてのリポジトリ</h1>
+                    <span id="filteredCountBadge" class="text-sm text-slate-500 font-medium">(0 件)</span>
+
+                    <!-- Active Tag/Keyword Pill Indicator -->
+                    <div id="activeFilterPills" class="flex items-center gap-1.5 flex-wrap ml-2"></div>
+                </div>
+
+                <!-- Controls: README Scan Trigger, Sort Dropdown & View Switcher -->
+                <div class="flex items-center gap-2.5 self-end sm:self-auto">
+                    <button id="scanReadmeBtn" onclick="scanAllReadmes(false)" class="px-3 py-1.5 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-600 border border-slate-200 rounded-lg text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-colors" title="未チェックのREADME.mdを取得して空文字判定とタグ抽出を行います">
+                        <i class="fa-brands fa-markdown text-blue-500"></i>
+                        <span class="hidden md:inline">README一括解析</span>
+                    </button>
+
+                    <!-- Sort Select -->
+                    <div class="relative">
+                        <select id="sortSelect" onchange="renderRepositories()" class="appearance-none bg-white border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-blue-500 shadow-2xs cursor-pointer">
+                            <option value="updated">更新が新しい順</option>
+                            <option value="stars">スターが多い順</option>
+                            <option value="forks">フォークが多い順</option>
+                            <option value="name">名前順 (A-Z)</option>
+                            <option value="created">作成が新しい順</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down absolute right-2.5 top-2.5 text-[10px] text-slate-400 pointer-events-none"></i>
+                    </div>
+
+                    <!-- Tile / List View Toggle -->
+                    <div class="flex bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
+                        <button id="viewTileBtn" onclick="setViewMode('tile')" class="px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 bg-blue-600 text-white transition-colors">
+                            <i class="fa-solid fa-border-all"></i>
+                            <span>タイル</span>
+                        </button>
+                        <button id="viewListBtn" onclick="setViewMode('list')" class="px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 text-slate-600 hover:text-slate-900 transition-colors">
+                            <i class="fa-solid fa-list"></i>
+                            <span>リスト</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Repository Grid / List Container -->
+            <div id="reposScrollContainer" class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 pb-10">
+                <!-- Loading Skeleton -->
+                <div id="loadingState" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                    <!-- Populated via JS while loading -->
+                </div>
+
+                <!-- Repository Items Container -->
+                <div id="reposContainer" class="hidden"></div>
+
+                <!-- Empty State -->
+                <div id="emptyState" class="hidden flex-col items-center justify-center py-20 text-center">
+                    <div class="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 text-2xl mb-4">
+                        <i class="fa-solid fa-folder-minus"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-700 mb-1">条件に一致するリポジトリが見つかりません</h3>
+                    <p class="text-xs text-slate-500 max-w-md mb-4">検索キーワードやカテゴリ、README状態フィルタを変更するか、すべてのフィルタをリセットしてください。</p>
+                    <button onclick="resetAllFilters()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors shadow-xs">
+                        すべてのフィルタを解除
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- README Preview & Repo Detail Modal -->
+    <div id="readmeModal" class="fixed inset-0 bg-slate-900/50 z-50 hidden items-center justify-center p-4 backdrop-blur-xs">
+        <div class="bg-white rounded-2xl border border-slate-200 max-w-4xl w-full max-h-[88vh] flex flex-col shadow-xl overflow-hidden">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div id="modalRepoIcon" class="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0"></div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <h2 id="modalRepoTitle" class="font-bold text-base text-slate-800 truncate">Repository Name</h2>
+                            <span id="modalPrivateBadge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">Private</span>
+                        </div>
+                        <p id="modalRepoMeta" class="text-xs text-slate-500 truncate"></p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="modalRefreshRepoBtn" onclick="refreshCurrentModalRepo()" class="px-3 py-1.5 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-600 border border-slate-200 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors" title="このリポジトリのメタデータとREADMEを再取得">
+                        <i id="modalRefreshIcon" class="fa-solid fa-arrows-rotate"></i>
+                        <span class="hidden sm:inline">個別更新</span>
+                    </button>
+                    <a id="modalGithubLink" href="#" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors">
+                        <i class="fa-brands fa-github"></i>
+                        <span>GitHubで開く</span>
+                    </a>
+                    <button onclick="closeReadmeModal()" class="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Extracted Tags Bar -->
+            <div class="px-6 py-2.5 bg-white border-b border-slate-100 flex items-center gap-2 flex-wrap">
+                <span class="text-[11px] font-semibold text-slate-400">READMEステータス / 抽出タグ:</span>
+                <div id="modalReadmeTags" class="flex items-center gap-1.5 flex-wrap"></div>
+            </div>
+
+            <!-- Modal Body (Markdown Content) -->
+            <div id="modalReadmeBody" class="p-6 overflow-y-auto flex-1 markdown-body text-sm">
+                <!-- Rendered Markdown -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings & Cache Management Modal -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-900/50 z-50 hidden items-center justify-center p-4 backdrop-blur-xs">
+        <div class="bg-white rounded-2xl border border-slate-200 max-w-lg w-full shadow-xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-gear text-slate-700"></i>
+                    <h2 class="font-bold text-base text-slate-800">GitHub 連携・キャッシュ管理設定</h2>
+                </div>
+                <button onclick="closeSettingsModal()" class="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-5 text-sm">
+                <!-- Target GitHub User -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">対象 GitHub ユーザー名（URLから自動検出）</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="settingsUsernameInput" value="" placeholder="username" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
+                        <button onclick="applySettingsAndReload()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors">
+                            変更して取得
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Optional Personal Access Token for Rate Limit -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-slate-700">GitHub Personal Access Token (ご本人・プライベート表示用)</label>
+                        <span id="rateLimitDisplay" class="text-[11px] text-slate-500 font-medium">API残数: 未確認</span>
+                    </div>
+                    <input type="password" id="settingsTokenInput" placeholder="ghp_... または github_pat_... (未入力時は公開リポジトリのみ表示)" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
+                    <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                        ※トークンはこのブラウザの <code class="bg-slate-100 px-1 rounded">localStorage</code> にのみ保存されます。<br>
+                        ・<strong>あなた（トークン設定時）</strong>：プライベートリポジトリも含めて自動取得・表示されます。<br>
+                        ・<strong>他の閲覧者（未設定・権限なし時）</strong>：エラーを出さず、閲覧権限のある公開リポジトリのみ安全に表示します。
+                    </p>
+                </div>
+
+                <!-- Cache Statistics & Reset Controls -->
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-xs font-bold text-slate-800">ローカルキャッシュ (IndexedDB + localStorage)</h4>
+                            <p id="settingsCacheDetail" class="text-[11px] text-slate-500 mt-0.5">計算中...</p>
+                        </div>
+                        <span class="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[11px] font-semibold">有効</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        <button onclick="scanAllReadmes(true)" class="py-2 px-3 bg-white hover:bg-blue-50 text-blue-600 border border-blue-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+                            <i class="fa-brands fa-markdown"></i>
+                            <span>全READMEを再チェック</span>
+                        </button>
+                        <button onclick="confirmAndResetCache()" class="py-2 px-3 bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+                            <i class="fa-solid fa-trash-can"></i>
+                            <span>キャッシュを完全リセット</span>
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-200/80">
+                        <button onclick="exportBackupJson()" class="py-2 px-3 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors">
+                            <i class="fa-solid fa-file-export text-slate-500"></i>
+                            <span>キャッシュをJSON出力</span>
+                        </button>
+                        <label class="py-2 px-3 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+                            <i class="fa-solid fa-file-import text-slate-500"></i>
+                            <span>JSONから復元</span>
+                            <input type="file" accept=".json" onchange="importBackupJson(event)" class="hidden">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+                <button onclick="saveTokenOnly()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-colors">
+                    設定を保存して閉じる
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Toast Notification -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        function detectOwnerUsername() {
+            // 1. If user previously customized or saved it in this browser
+            const saved = localStorage.getItem('gh_explorer_username');
+            if (saved && saved.trim() !== '') return saved.trim();
+
+            // 2. Automatically resolve from GitHub Pages URL: https://<username>.github.io/<repo>/
+            const hostname = window.location.hostname.toLowerCase();
+            if (hostname.endsWith('.github.io')) {
+                const parts = hostname.split('.');
+                if (parts.length >= 3 && parts[0]) {
+                    return parts[0];
+                }
+            }
+
+            // 3. Fallback for custom domains or local testing with URL query: ?user=<username>
+            const urlParams = new URLSearchParams(window.location.search);
+            const userParam = urlParams.get('user') || urlParams.get('owner');
+            if (userParam && userParam.trim() !== '') {
+                return userParam.trim();
+            }
+
+            // 4. Default fallback when tested locally in playground
+            return 't2k2pp';
+        }
+
+        const DB_NAME = 'GitHubRepoExplorerDB';
+        const DB_VERSION = 1;
+        const CACHE_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours default TTL before auto background check
+
+        // Category definitions matching the user's dashboard screenshot
+        const CATEGORIES = [
+            {
+                id: 'book-study',
+                name: '書籍・学習',
+                icon: 'fa-solid fa-book-open',
+                badgeBg: 'bg-purple-100 text-purple-700',
+                iconBg: 'bg-indigo-600',
+                keywords: ['book', 'study', 'learn', 'tutorial', 'course', 'note', 'doc', 'sample', 'example', 'practice', 'training', 'text', 'markdown', '書籍', '学習', '入門', '勉強', '本', '講座', 'ノート', 'サンプル']
+            },
+            {
+                id: 'game',
+                name: 'ゲーム',
+                icon: 'fa-solid fa-gamepad',
+                badgeBg: 'bg-pink-100 text-pink-700',
+                iconBg: 'bg-pink-500',
+                keywords: ['game', 'rpg', 'puzzle', 'play', 'unity', 'godot', 'phaser', 'canvas', 'retro', 'card', 'board', 'othello', 'reversi', 'chess', 'shogi', 'mahjong', 'novel', 'ゲーム', 'パズル', 'オセロ', '将棋', 'ノベル']
+            },
+            {
+                id: 'biz-app',
+                name: 'ビジネスアプリ',
+                icon: 'fa-solid fa-briefcase',
+                badgeBg: 'bg-sky-100 text-sky-700',
+                iconBg: 'bg-sky-600',
+                keywords: ['biz', 'business', 'assistant', 'work', 'task', 'todo', 'schedule', 'calendar', 'chart', 'data', 'visualize', 'dashboard', 'office', 'finance', 'report', 'crm', 'erp', 'invoice', '業務', 'ビジネス', '管理', '分析', 'タスク', 'スケジュール', 'レポート']
+            },
+            {
+                id: 'tools',
+                name: 'ツール・ユーティリティ',
+                icon: 'fa-solid fa-screwdriver-wrench',
+                badgeBg: 'bg-amber-100 text-amber-800',
+                iconBg: 'bg-orange-500',
+                keywords: ['tool', 'util', 'cli', 'script', 'automation', 'auto', 'helper', 'converter', 'generator', 'extension', 'plugin', 'bot', 'scraper', 'search', 'checker', 'formatter', 'home', 'iot', 'ツール', '自動化', '変換', '拡張', '便利', '検索']
+            },
+            {
+                id: 'website',
+                name: 'Webサイト',
+                icon: 'fa-solid fa-globe',
+                badgeBg: 'bg-teal-100 text-teal-700',
+                iconBg: 'bg-emerald-500',
+                keywords: ['web', 'site', 'homepage', 'portfolio', 'blog', 'lp', 'html', 'css', 'page', 'github.io', 'react', 'vue', 'next', 'nuxt', 'フロントエンド', 'サイト', 'ポートフォリオ', 'ブログ', 'ページ']
+            },
+            {
+                id: 'ai-llm',
+                name: 'AI・生成AI',
+                icon: 'fa-solid fa-brain',
+                badgeBg: 'bg-blue-100 text-blue-700',
+                iconBg: 'bg-blue-500',
+                keywords: ['ai', 'llm', 'gpt', 'openai', 'gemini', 'claude', 'anthropic', 'prompt', 'ml', 'deep', 'neural', 'diffusion', 'voice', 'chat', 'agent', 'rag', 'langchain', '生成ai', 'プロンプト', '人工知能', 'チャット']
+            },
+            {
+                id: 'other',
+                name: 'その他',
+                icon: 'fa-solid fa-box-archive',
+                badgeBg: 'bg-slate-200 text-slate-700',
+                iconBg: 'bg-slate-600',
+                keywords: []
+            }
+        ];
+
+        // Language dot colors
+        const LANGUAGE_COLORS = {
+            'JavaScript': '#f1e05a',
+            'TypeScript': '#3178c6',
+            'Python': '#3572A5',
+            'HTML': '#e34c26',
+            'CSS': '#563d7c',
+            'Go': '#00ADD8',
+            'Rust': '#dea584',
+            'Java': '#b07219',
+            'C#': '#178600',
+            'C++': '#f34b7d',
+            'C': '#555555',
+            'PHP': '#4F5D95',
+            'Ruby': '#701516',
+            'Swift': '#F05138',
+            'Kotlin': '#A97BFF',
+            'Dart': '#00B4AB',
+            'Shell': '#89e051',
+            'Jupyter Notebook': '#DA5B0B',
+            'Vue': '#41b883',
+            'Markdown': '#083fa1'
+        };
+
+        // Application State
+        let state = {
+            username: detectOwnerUsername(),
+            token: localStorage.getItem('gh_explorer_token') || '',
+            authenticatedUser: null,
+            favorites: JSON.parse(localStorage.getItem('gh_explorer_favorites') || '[]'),
+            repositories: [],
+            readmeMap: {}, // repoName -> { status: 'valid'|'empty'|'missing', content: string, tags: string[], checkedAt: number }
+            activeNav: 'all', // 'all', 'favorites', 'recent', 'private', 'readme-valid', 'readme-empty', or 'cat:...'
+            activeTag: null,
+            searchQuery: '',
+            tagSearchQuery: '',
+            viewMode: localStorage.getItem('gh_explorer_viewmode') || 'tile',
+            isScanningReadmes: false,
+            currentModalFullName: null,
+            refreshingRepos: {} // fullName -> boolean
+        };
+
+        function getCacheKey(username) {
+            const hasToken = Boolean(state.token && state.token.trim() !== '');
+            return `${username.toLowerCase()}__${hasToken ? 'auth' : 'public'}`;
+        }
+
+        function saveLocalBackup(username, repos, userProfile) {
+            if (!repos || repos.length === 0) return;
+            try {
+                // Save lightweight metadata snapshot in localStorage as a fallback if IndexedDB is isolated
+                const slimRepos = repos.map(r => ({
+                    id: r.id,
+                    name: r.name,
+                    full_name: r.full_name,
+                    private: Boolean(r.private),
+                    html_url: r.html_url,
+                    description: r.description,
+                    fork: r.fork,
+                    created_at: r.created_at,
+                    updated_at: r.updated_at,
+                    pushed_at: r.pushed_at,
+                    homepage: r.homepage,
+                    stargazers_count: r.stargazers_count,
+                    forks_count: r.forks_count,
+                    language: r.language,
+                    topics: r.topics || [],
+                    owner: r.owner ? { login: r.owner.login, avatar_url: r.owner.avatar_url } : { login: username }
+                }));
+                const payload = JSON.stringify({
+                    username: getCacheKey(username),
+                    repos: slimRepos,
+                    userProfile,
+                    updatedAt: Date.now()
+                });
+                localStorage.setItem(`gh_backup_${getCacheKey(username)}`, payload);
+                // Also store in window.name so fullscreen toggles within the same tab retain data even if storage is reset
+                try {
+                    window.name = payload;
+                } catch (_) {}
+            } catch (e) {
+                console.warn('localStorage backup failed:', e);
+            }
+        }
+
+        function loadLocalBackup(username) {
+            const key = `gh_backup_${getCacheKey(username)}`;
+            try {
+                const raw = localStorage.getItem(key);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && Array.isArray(parsed.repos) && parsed.repos.length > 0) {
+                        return parsed;
+                    }
+                }
+            } catch (_) {}
+
+            try {
+                if (window.name && window.name.startsWith('{')) {
+                    const parsed = JSON.parse(window.name);
+                    if (parsed && Array.isArray(parsed.repos) && parsed.repos.length > 0) {
+                        return parsed;
+                    }
+                }
+            } catch (_) {}
+            return null;
+        }
+
+        function setRateLimitBanner(show, resetTimestamp = null) {
+            const banner = document.getElementById('rateLimitBanner');
+            const textEl = document.getElementById('rateLimitBannerText');
+            if (!banner || !textEl) return;
+            if (!show) {
+                banner.classList.add('hidden');
+                banner.classList.remove('flex');
+                return;
+            }
+            let resetInfo = '';
+            if (resetTimestamp) {
+                const d = new Date(Number(resetTimestamp) * 1000);
+                resetInfo = `（解除予定: ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 頃）`;
+            }
+            textEl.textContent = `GitHub APIのアクセス制限（未認証時は60回/時）に達しています${resetInfo}。設定からPersonal Access Tokenを入力すると5,000回/時まで拡大されます。`;
+            banner.classList.remove('hidden');
+            banner.classList.add('flex');
+        }
+
+        function openDatabase() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('user_repos')) {
+                        db.createObjectStore('user_repos', { keyPath: 'username' });
+                    }
+                    if (!db.objectStoreNames.contains('repo_readmes')) {
+                        db.createObjectStore('repo_readmes', { keyPath: 'fullName' });
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function getCachedRepos(username) {
+            try {
+                const db = await openDatabase();
+                return new Promise((resolve) => {
+                    const tx = db.transaction('user_repos', 'readonly');
+                    const req = tx.objectStore('user_repos').get(getCacheKey(username));
+                    req.onsuccess = () => resolve(req.result || null);
+                    req.onerror = () => resolve(null);
+                });
+            } catch (err) {
+                console.warn('IndexedDB read error:', err);
+                return null;
+            }
+        }
+
+        async function saveCachedRepos(username, repos, userProfile) {
+            try {
+                const db = await openDatabase();
+                return new Promise((resolve) => {
+                    const tx = db.transaction('user_repos', 'readwrite');
+                    tx.objectStore('user_repos').put({
+                        username: getCacheKey(username),
+                        repos,
+                        userProfile,
+                        updatedAt: Date.now()
+                    });
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                });
+            } catch (err) {
+                console.warn('IndexedDB write error:', err);
+                return false;
+            }
+        }
+
+        async function getAllCachedReadmes() {
+            try {
+                const db = await openDatabase();
+                return new Promise((resolve) => {
+                    const tx = db.transaction('repo_readmes', 'readonly');
+                    const req = tx.objectStore('repo_readmes').getAll();
+                    req.onsuccess = () => {
+                        const map = {};
+                        (req.result || []).forEach(item => {
+                            map[item.fullName] = item;
+                        });
+                        resolve(map);
+                    };
+                    req.onerror = () => resolve({});
+                });
+            } catch (err) {
+                console.warn('IndexedDB readmes read error:', err);
+                return {};
+            }
+        }
+
+        async function saveCachedReadme(fullName, readmeData) {
+            try {
+                const db = await openDatabase();
+                return new Promise((resolve) => {
+                    const tx = db.transaction('repo_readmes', 'readwrite');
+                    tx.objectStore('repo_readmes').put({
+                        fullName,
+                        ...readmeData,
+                        checkedAt: Date.now()
+                    });
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                });
+            } catch (err) {
+                return false;
+            }
+        }
+
+        async function clearAllIndexedDBCache() {
+            try {
+                const db = await openDatabase();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(['user_repos', 'repo_readmes'], 'readwrite');
+                    tx.objectStore('user_repos').clear();
+                    tx.objectStore('repo_readmes').clear();
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                });
+            } catch (err) {
+                return false;
+            }
+        }
+
+        function filterAccessibleRepos(repos) {
+            const hasToken = Boolean(state.token && state.token.trim() !== '');
+            if (!hasToken) {
+                // Visitors without a token only see public repositories without any errors
+                return (repos || []).filter(r => !r.private);
+            }
+            return repos || [];
+        }
+
+        async function loadUserAndRepositories(forceRefresh = false) {
+            showLoadingSkeleton();
+            const username = state.username.trim() || detectOwnerUsername();
+            state.username = username;
+
+            // Load cached READMEs first
+            state.readmeMap = await getAllCachedReadmes();
+
+            // Always prepare existing cache/backup so we never overwrite valid data with 0 items on rate-limit
+            const existingCache = await getCachedRepos(username) || loadLocalBackup(username);
+
+            if (!forceRefresh && existingCache && existingCache.repos && existingCache.repos.length > 0) {
+                state.repositories = filterAccessibleRepos(existingCache.repos);
+                updateProfileUI(existingCache.userProfile, existingCache.updatedAt, true);
+                updateAllCountsAndRender();
+
+                // Auto background scan READMEs gently
+                triggerInitialReadmeCheckIfNeeded();
+                return;
+            }
+
+            try {
+                let userProfile = existingCache?.userProfile || { login: username, name: username, avatar_url: `https://github.com/${username}.png` };
+                let useAuthenticatedEndpoint = false;
+                let hitRateLimit = false;
+                let rateLimitReset = null;
+
+                // 1. If token is configured, silently verify whether the viewer is the authenticated owner
+                if (state.token && state.token.trim() !== '') {
+                    try {
+                        const authRes = await fetch('https://api.github.com/user', {
+                            headers: getGitHubHeaders(false, true)
+                        });
+                        updateRateLimitFromResponse(authRes);
+                        if (authRes.ok) {
+                            const authUser = await authRes.json();
+                            state.authenticatedUser = authUser.login;
+                            if (authUser.login && authUser.login.toLowerCase() === username.toLowerCase()) {
+                                useAuthenticatedEndpoint = true;
+                                userProfile = authUser;
+                            }
+                        } else {
+                            state.authenticatedUser = null;
+                        }
+                    } catch (_) {
+                        state.authenticatedUser = null;
+                    }
+                } else {
+                    state.authenticatedUser = null;
+                }
+
+                // 2. If not using the authenticated owner profile, fetch public profile safely
+                if (!useAuthenticatedEndpoint) {
+                    const userRes = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}`, {
+                        headers: getGitHubHeaders(false, false)
+                    });
+                    updateRateLimitFromResponse(userRes);
+                    if (userRes.ok) {
+                        userProfile = await userRes.json();
+                    } else if (userRes.status === 403 || userRes.status === 429) {
+                        hitRateLimit = true;
+                        rateLimitReset = userRes.headers.get('x-ratelimit-reset');
+                    }
+                }
+
+                // 3. Fetch repositories based on viewer permission
+                let allRepos = [];
+                let page = 1;
+                let apiSucceeded = false;
+
+                while (page <= 3 && !hitRateLimit) {
+                    const endpoint = useAuthenticatedEndpoint
+                        ? `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner`
+                        : `https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=updated`;
+
+                    let reposRes = await fetch(endpoint, {
+                        headers: getGitHubHeaders(false, useAuthenticatedEndpoint)
+                    });
+                    updateRateLimitFromResponse(reposRes);
+
+                    if (!reposRes.ok && useAuthenticatedEndpoint) {
+                        useAuthenticatedEndpoint = false;
+                        const fallbackUrl = `https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=updated`;
+                        reposRes = await fetch(fallbackUrl, { headers: getGitHubHeaders(false, false) });
+                        updateRateLimitFromResponse(reposRes);
+                    }
+
+                    if (!reposRes.ok) {
+                        if (reposRes.status === 403 || reposRes.status === 429) {
+                            hitRateLimit = true;
+                            rateLimitReset = reposRes.headers.get('x-ratelimit-reset');
+                        }
+                        break;
+                    }
+
+                    const pageRepos = await reposRes.json();
+                    if (!Array.isArray(pageRepos)) break;
+                    apiSucceeded = true;
+                    allRepos = allRepos.concat(pageRepos);
+                    if (pageRepos.length < 100) break;
+                    page++;
+                }
+
+                allRepos = allRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === username.toLowerCase());
+                const accessibleRepos = filterAccessibleRepos(allRepos);
+
+                // Critical guard: Never overwrite existing cached repos with 0 items when rate-limited or failed
+                if ((!apiSucceeded || accessibleRepos.length === 0) && existingCache && existingCache.repos && existingCache.repos.length > 0) {
+                    state.repositories = filterAccessibleRepos(existingCache.repos);
+                    updateProfileUI(existingCache.userProfile || userProfile, existingCache.updatedAt, true);
+                    updateAllCountsAndRender();
+                    if (hitRateLimit) {
+                        setRateLimitBanner(true, rateLimitReset);
+                        showToast('API制限中のため、保存済みのキャッシュデータを表示しています', 'info');
+                    }
+                    return;
+                }
+
+                if (hitRateLimit && accessibleRepos.length === 0) {
+                    setRateLimitBanner(true, rateLimitReset);
+                    showToast('GitHub APIのレート制限に達しています。少し待つかトークンを設定してください', 'error');
+                    updateAllCountsAndRender();
+                    return;
+                }
+
+                setRateLimitBanner(false);
+                state.repositories = accessibleRepos;
+
+                // Only persist to IndexedDB & backup when we actually got repository items
+                if (state.repositories.length > 0) {
+                    await saveCachedRepos(username, state.repositories, userProfile);
+                    saveLocalBackup(username, state.repositories, userProfile);
+                    localStorage.setItem('gh_explorer_last_sync', Date.now().toString());
+                }
+
+                updateProfileUI(userProfile, Date.now(), false);
+                updateAllCountsAndRender();
+
+                const privateCount = state.repositories.filter(r => r.private).length;
+                const msg = privateCount > 0
+                    ? `${state.repositories.length} 件（うちプライベート ${privateCount} 件）を取得・キャッシュしました`
+                    : `${state.repositories.length} 件の公開リポジトリを取得・キャッシュしました`;
+                showToast(msg, 'success');
+
+                // Automatically inspect READMEs in background
+                triggerInitialReadmeCheckIfNeeded();
+
+            } catch (error) {
+                console.warn('GitHub API fetch warning:', error);
+                if (existingCache && existingCache.repos && existingCache.repos.length > 0) {
+                    state.repositories = filterAccessibleRepos(existingCache.repos);
+                    updateProfileUI(existingCache.userProfile, existingCache.updatedAt, true);
+                }
+                updateAllCountsAndRender();
+            }
+        }
+
+        // Refresh a single repository's metadata and README.md without reloading everything
+        async function refreshSingleRepository(fullName, silent = false) {
+            if (state.refreshingRepos[fullName]) return;
+            state.refreshingRepos[fullName] = true;
+            updateSingleRefreshIcons(fullName, true);
+
+            try {
+                const useToken = Boolean(state.token && state.token.trim() !== '');
+                let repoRes = await fetch(`https://api.github.com/repos/${fullName}`, {
+                    headers: getGitHubHeaders(false, useToken)
+                });
+                updateRateLimitFromResponse(repoRes);
+
+                // If token caused 401/403 on a public repo, retry without token silently
+                if (!repoRes.ok && useToken && (repoRes.status === 401 || repoRes.status === 403)) {
+                    repoRes = await fetch(`https://api.github.com/repos/${fullName}`, {
+                        headers: getGitHubHeaders(false, false)
+                    });
+                    updateRateLimitFromResponse(repoRes);
+                }
+
+                if (repoRes.status === 404 || repoRes.status === 403 || repoRes.status === 401) {
+                    // Viewer no longer has permission (e.g. private repo without valid token) -> remove silently
+                    state.repositories = state.repositories.filter(r => r.full_name !== fullName);
+                    await saveCachedRepos(state.username, state.repositories, null);
+                    updateAllCountsAndRender();
+                    return;
+                }
+
+                if (repoRes.ok) {
+                    const freshRepo = await repoRes.json();
+                    const idx = state.repositories.findIndex(r => r.full_name === fullName);
+                    if (idx >= 0) {
+                        state.repositories[idx] = freshRepo;
+                    } else {
+                        state.repositories.unshift(freshRepo);
+                    }
+
+                    // Re-fetch README.md for this repository
+                    await fetchSingleReadme(freshRepo);
+
+                    // Update IndexedDB cache for repository list
+                    const cached = await getCachedRepos(state.username);
+                    await saveCachedRepos(state.username, state.repositories, cached?.userProfile || null);
+
+                    updateAllCountsAndRender();
+                    if (!silent) {
+                        showToast(`「${freshRepo.name}」の最新情報とREADMEを更新しました`, 'success');
+                    }
+                }
+            } catch (e) {
+                console.warn('Single repo refresh failed:', e);
+                if (!silent) {
+                    showToast('リポジトリの更新に失敗しました（通信またはAPI制限）', 'error');
+                }
+            } finally {
+                delete state.refreshingRepos[fullName];
+                updateSingleRefreshIcons(fullName, false);
+            }
+        }
+
+        function updateSingleRefreshIcons(fullName, isSpinning) {
+            document.querySelectorAll(`[data-refresh-repo="${fullName}"] i`).forEach(icon => {
+                icon.classList.toggle('fa-spin', isSpinning);
+                icon.classList.toggle('text-blue-600', isSpinning);
+            });
+            if (state.currentModalFullName === fullName) {
+                const modalIcon = document.getElementById('modalRefreshIcon');
+                if (modalIcon) modalIcon.classList.toggle('fa-spin', isSpinning);
+            }
+        }
+
+        async function refreshCurrentModalRepo() {
+            if (!state.currentModalFullName) return;
+            const fullName = state.currentModalFullName;
+            await refreshSingleRepository(fullName, false);
+            await openReadmeModal(fullName);
+        }
+
+        function getGitHubHeaders(acceptRaw = false, includeToken = true) {
+            const headers = {
+                'Accept': acceptRaw ? 'application/vnd.github.v3.raw' : 'application/vnd.github.v3+json'
+            };
+            if (includeToken && state.token && state.token.trim() !== '') {
+                headers['Authorization'] = `token ${state.token.trim()}`;
+            }
+            return headers;
+        }
+
+        // Extract meaningful tags from README content & check if README is empty
+        function analyzeReadmeContent(rawContent, repo) {
+            if (rawContent === null || rawContent === undefined) {
+                return {
+                    status: 'missing',
+                    isEmpty: true,
+                    content: '',
+                    summary: '',
+                    tags: ['README未作成']
+                };
+            }
+
+            // Trim whitespace, zero-width chars, and markdown comments to check for empty string
+            const stripped = rawContent
+                .replace(/<!--[\s\S]*?-->/g, '')
+                .replace(/\s+/g, '')
+                .trim();
+
+            if (stripped.length === 0) {
+                return {
+                    status: 'empty',
+                    isEmpty: true,
+                    content: rawContent,
+                    summary: '',
+                    tags: ['README空文字']
+                };
+            }
+
+            // If README has only repo title (e.g. "# repo-name") and nothing else
+            const withoutMainTitle = rawContent
+                .replace(/^#\s+.*$/m, '')
+                .replace(/<!--[\s\S]*?-->/g, '')
+                .trim();
+
+            const tags = new Set();
+
+            if (withoutMainTitle.length === 0) {
+                tags.add('見出しのみ');
+            }
+
+            // 1. Extract explicit hashtags like #Python #AI (excluding markdown headers)
+            const hashtagRegex = /(?:^|\s)#([a-zA-Z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\-]{2,20})(?=\s|$)/g;
+            let match;
+            while ((match = hashtagRegex.exec(rawContent)) !== null) {
+                const candidate = match[1].trim();
+                if (!/^\d+$/.test(candidate)) {
+                    tags.add(candidate);
+                }
+            }
+
+            // 2. Extract Markdown H2/H3 section headings or explicit "Tags:" / "技術スタック" lines
+            const techKeywords = [
+                'React', 'Vue', 'Next.js', 'TypeScript', 'JavaScript', 'Python', 'FastAPI', 'Flask', 'Django',
+                'Node.js', 'Go', 'Rust', 'Docker', 'AWS', 'Firebase', 'Supabase', 'Tailwind', 'Three.js',
+                'OpenAI', 'Gemini', 'Claude', 'LLM', 'GPT', '生成AI', '機械学習', 'Chrome拡張', 'CLI', 'API',
+                'GitHub Pages', 'IndexedDB', 'WebSocket', 'Canvas', 'SVG', 'Markdown', 'GAS', 'Unity'
+            ];
+            const lowerReadme = rawContent.toLowerCase();
+            techKeywords.forEach(kw => {
+                if (lowerReadme.includes(kw.toLowerCase())) {
+                    tags.add(kw);
+                }
+            });
+
+            // 3. Extract first non-heading paragraph as fallback description
+            const lines = rawContent.split(/\r?\n/);
+            let firstParagraph = '';
+            for (const line of lines) {
+                const t = line.trim();
+                if (!t || t.startsWith('#') || t.startsWith('!') || t.startsWith('[!') || t.startsWith('```') || t.startsWith('---') || t.startsWith('>')) {
+                    continue;
+                }
+                firstParagraph = t.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_`~]/g, '');
+                if (firstParagraph.length >= 8) break;
+            }
+
+            return {
+                status: 'valid',
+                isEmpty: false,
+                content: rawContent,
+                summary: firstParagraph.slice(0, 160),
+                tags: Array.from(tags).slice(0, 8)
+            };
+        }
+
+        // Categorize a repository into one of the 7 categories
+        function classifyRepository(repo, readmeInfo) {
+            const textToAnalyze = [
+                repo.name || '',
+                repo.description || '',
+                (repo.topics || []).join(' '),
+                repo.language || '',
+                readmeInfo?.summary || '',
+                (readmeInfo?.tags || []).join(' ')
+            ].join(' ').toLowerCase();
+
+            for (const cat of CATEGORIES) {
+                if (cat.id === 'other') continue;
+                for (const kw of cat.keywords) {
+                    if (textToAnalyze.includes(kw.toLowerCase())) {
+                        return cat;
+                    }
+                }
+            }
+
+            // Fallback heuristics based on primary language
+            const lang = (repo.language || '').toLowerCase();
+            if (lang === 'html' || lang === 'css' || lang === 'vue') {
+                return CATEGORIES.find(c => c.id === 'website');
+            }
+            if (lang === 'jupyter notebook') {
+                return CATEGORIES.find(c => c.id === 'ai-llm');
+            }
+            if (lang === 'markdown') {
+                return CATEGORIES.find(c => c.id === 'book-study');
+            }
+            if (lang === 'shell' || lang === 'go' || lang === 'rust') {
+                return CATEGORIES.find(c => c.id === 'tools');
+            }
+
+            return CATEGORIES.find(c => c.id === 'other');
+        }
+
+        function updateRateLimitFromResponse(res) {
+            const remaining = res.headers.get('x-ratelimit-remaining');
+            const limit = res.headers.get('x-ratelimit-limit');
+            if (remaining !== null && limit !== null) {
+                const el = document.getElementById('rateLimitDisplay');
+                if (el) el.textContent = `API残数: ${remaining} / ${limit}`;
+            }
+        }
+
+        function updateProfileUI(profile, timestamp, fromCache) {
+            const avatar = document.getElementById('userAvatar');
+            const nameDisplay = document.getElementById('userNameDisplay');
+            const cacheTimeDisplay = document.getElementById('cacheTimeDisplay');
+
+            if (profile) {
+                avatar.src = profile.avatar_url || (state.username ? `https://github.com/${state.username}.png` : 'https://placehold.co/64x64/1e293b/ffffff?text=GH');
+                nameDisplay.textContent = profile.name || profile.login || state.username;
+                document.title = `${nameDisplay.textContent} - Repositories Search`;
+            }
+            if (timestamp) {
+                const d = new Date(timestamp);
+                const timeStr = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                cacheTimeDisplay.textContent = fromCache ? `キャッシュ (${timeStr})` : `API同期済 (${timeStr})`;
+            }
+        }
+
+        async function fetchSingleReadme(repo) {
+            const fullName = repo.full_name;
+            try {
+                const useToken = Boolean(state.token && state.token.trim() !== '');
+                let res = await fetch(`https://api.github.com/repos/${fullName}/readme`, {
+                    headers: getGitHubHeaders(true, useToken)
+                });
+                updateRateLimitFromResponse(res);
+
+                if (!res.ok && useToken && (res.status === 401 || res.status === 403)) {
+                    res = await fetch(`https://api.github.com/repos/${fullName}/readme`, {
+                        headers: getGitHubHeaders(true, false)
+                    });
+                    updateRateLimitFromResponse(res);
+                }
+
+                if (res.status === 404) {
+                    const info = analyzeReadmeContent(null, repo);
+                    state.readmeMap[fullName] = info;
+                    await saveCachedReadme(fullName, info);
+                    return info;
+                }
+                if (!res.ok) {
+                    return null; // Rate limit or network issue
+                }
+                const rawText = await res.text();
+                const info = analyzeReadmeContent(rawText, repo);
+                state.readmeMap[fullName] = info;
+                await saveCachedReadme(fullName, info);
+                return info;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function triggerInitialReadmeCheckIfNeeded() {
+            const unchecked = state.repositories.filter(r => !state.readmeMap[r.full_name]);
+            if (unchecked.length > 0) {
+                // Without a token, GitHub allows only 60 requests/hour total.
+                // Limit automatic background README checks to 8 repos when unauthenticated so the user retains API quota!
+                const limit = state.token ? unchecked.length : Math.min(unchecked.length, 8);
+                await scanReadmeBatch(unchecked.slice(0, limit));
+            }
+        }
+
+        async function scanAllReadmes(forceAll = false) {
+            if (state.isScanningReadmes) {
+                showToast('現在READMEを解析中です...', 'info');
+                return;
+            }
+            const targets = forceAll
+                ? state.repositories
+                : state.repositories.filter(r => !state.readmeMap[r.full_name]);
+
+            if (targets.length === 0) {
+                showToast('すべてのリポジトリのREADMEが解析・キャッシュ済みです', 'success');
+                return;
+            }
+
+            await scanReadmeBatch(targets);
+            showToast('README.mdの空文字チェックとタグ抽出が完了しました', 'success');
+        }
+
+        async function scanReadmeBatch(repoList) {
+            if (repoList.length === 0) return;
+            state.isScanningReadmes = true;
+
+            const progressBox = document.getElementById('readmeScanProgressBox');
+            const scanText = document.getElementById('readmeScanText');
+            const scanPercent = document.getElementById('readmeScanPercent');
+            const scanBar = document.getElementById('readmeScanBar');
+
+            progressBox.classList.remove('hidden');
+
+            let completed = 0;
+            const total = repoList.length;
+            const concurrency = 4;
+
+            for (let i = 0; i < total; i += concurrency) {
+                const chunk = repoList.slice(i, i + concurrency);
+                await Promise.all(chunk.map(async (repo) => {
+                    await fetchSingleReadme(repo);
+                    completed++;
+                    const pct = Math.round((completed / total) * 100);
+                    scanText.textContent = `README解析中 (${completed}/${total})`;
+                    scanPercent.textContent = `${pct}%`;
+                    scanBar.style.width = `${pct}%`;
+                }));
+                updateAllCountsAndRender();
+            }
+
+            setTimeout(() => {
+                progressBox.classList.add('hidden');
+            }, 1200);
+            state.isScanningReadmes = false;
+        }
+
+        function getEnrichedRepositories() {
+            return state.repositories.map(repo => {
+                const readmeInfo = state.readmeMap[repo.full_name] || null;
+                const category = classifyRepository(repo, readmeInfo);
+                const isFav = state.favorites.includes(repo.full_name);
+
+                // Merge GitHub topics, primary language, and extracted README tags
+                const combinedTags = new Set();
+                if (repo.language) combinedTags.add(repo.language);
+                (repo.topics || []).forEach(t => combinedTags.add(t));
+                if (readmeInfo && readmeInfo.tags) {
+                    readmeInfo.tags.forEach(t => {
+                        if (t !== 'README未作成' && t !== 'README空文字') {
+                            combinedTags.add(t);
+                        }
+                    });
+                }
+
+                return {
+                    ...repo,
+                    readmeInfo,
+                    category,
+                    isFav,
+                    allTags: Array.from(combinedTags)
+                };
+            });
+        }
+
+        function updateAllCountsAndRender() {
+            const enriched = getEnrichedRepositories();
+            const now = Date.now();
+            const thirtyDaysMs = 1000 * 60 * 60 * 24 * 30;
+
+            // Total counts
+            document.getElementById('headerTotalCount').textContent = enriched.length;
+            document.getElementById('count-all').textContent = enriched.length;
+            document.getElementById('sidebarSyncStatusText').textContent = `${enriched.length} 件のリポジトリをキャッシュ中`;
+
+            // Favorites & Recent counts
+            const favCount = enriched.filter(r => r.isFav).length;
+            const recentCount = enriched.filter(r => (now - new Date(r.updated_at).getTime()) <= thirtyDaysMs).length;
+            const privateCount = enriched.filter(r => r.private).length;
+            document.getElementById('count-favorites').textContent = favCount;
+            document.getElementById('count-recent').textContent = recentCount;
+
+            // Show Private filter button in sidebar only when private repos are accessible
+            const navPrivateBtn = document.getElementById('nav-private');
+            const countPrivateEl = document.getElementById('count-private');
+            if (navPrivateBtn && countPrivateEl) {
+                countPrivateEl.textContent = privateCount;
+                navPrivateBtn.classList.toggle('hidden', privateCount === 0);
+                if (privateCount === 0 && state.activeNav === 'private') {
+                    state.activeNav = 'all';
+                }
+            }
+
+            // README counts
+            const readmeValidCount = enriched.filter(r => r.readmeInfo && !r.readmeInfo.isEmpty).length;
+            const readmeEmptyCount = enriched.filter(r => r.readmeInfo && r.readmeInfo.isEmpty).length;
+            document.getElementById('count-readme-valid').textContent = readmeValidCount;
+            document.getElementById('count-readme-empty').textContent = readmeEmptyCount;
+
+            // Render Categories in Sidebar
+            const catContainer = document.getElementById('categoryList');
+            catContainer.innerHTML = CATEGORIES.map(cat => {
+                const count = enriched.filter(r => r.category.id === cat.id).length;
+                const navKey = `cat:${cat.id}`;
+                const isActive = state.activeNav === navKey;
+                return `
+                    <button onclick="setNavFilter('${navKey}')" class="nav-btn w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors ${isActive ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-slate-600 hover:bg-slate-100'}">
+                        <div class="flex items-center gap-3">
+                            <i class="${cat.icon} w-4 text-center text-sm ${isActive ? 'text-blue-600' : 'text-slate-500'}"></i>
+                            <span>${cat.name}</span>
+                        </div>
+                        <span class="text-[11px] px-2 py-0.5 rounded-full ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'} font-semibold">${count}</span>
+                    </button>
+                `;
+            }).join('');
+
+            // Render Extracted Tags Cloud in Sidebar
+            renderSidebarTags(enriched);
+
+            // Render Main Repository Cards
+            renderRepositories(enriched);
+        }
+
+        function renderSidebarTags(enriched) {
+            const tagCounts = {};
+            enriched.forEach(repo => {
+                repo.allTags.forEach(tag => {
+                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                });
+            });
+
+            const sortedTags = Object.entries(tagCounts)
+                .sort((a, b) => b[1] - a[1]);
+
+            const filterKeyword = state.tagSearchQuery.trim().toLowerCase();
+            const visibleTags = filterKeyword
+                ? sortedTags.filter(([tag]) => tag.toLowerCase().includes(filterKeyword))
+                : sortedTags.slice(0, 30);
+
+            const container = document.getElementById('extractedTagsContainer');
+            const resetBtn = document.getElementById('resetTagBtn');
+            resetBtn.classList.toggle('hidden', !state.activeTag);
+
+            if (visibleTags.length === 0) {
+                container.innerHTML = `<span class="text-[11px] text-slate-400 py-1">該当するタグがありません</span>`;
+                return;
+            }
+
+            container.innerHTML = visibleTags.map(([tag, count]) => {
+                const isSelected = state.activeTag === tag;
+                return `
+                    <button
+                        onclick="toggleTagFilter('${ tag.replace(/'/g, "\\'") }')"
+                        class="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1 border ${
+                            isSelected
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200/80'
+                        }"
+                    >
+                        <span>${escapeHtml(tag)}</span>
+                        <span class="text-[10px] ${isSelected ? 'text-blue-100' : 'text-slate-400'}">${count}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderRepositories(enrichedList) {
+            const enriched = enrichedList || getEnrichedRepositories();
+            const now = Date.now();
+            const thirtyDaysMs = 1000 * 60 * 60 * 24 * 30;
+
+            // 1. Filter by Navigation Selection
+            let filtered = enriched.filter(repo => {
+                if (state.activeNav === 'favorites') return repo.isFav;
+                if (state.activeNav === 'recent') return (now - new Date(repo.updated_at).getTime()) <= thirtyDaysMs;
+                if (state.activeNav === 'private') return Boolean(repo.private);
+                if (state.activeNav === 'readme-valid') return repo.readmeInfo && !repo.readmeInfo.isEmpty;
+                if (state.activeNav === 'readme-empty') return repo.readmeInfo && repo.readmeInfo.isEmpty;
+                if (state.activeNav.startsWith('cat:')) {
+                    const catId = state.activeNav.replace('cat:', '');
+                    return repo.category.id === catId;
+                }
+                return true;
+            });
+
+            // 2. Filter by Selected Tag
+            if (state.activeTag) {
+                filtered = filtered.filter(repo => repo.allTags.includes(state.activeTag));
+            }
+
+            // 3. Filter by Search Query (Name, Description, Topics, Category, README Content)
+            if (state.searchQuery.trim() !== '') {
+                const terms = state.searchQuery.toLowerCase().trim().split(/\s+/);
+                filtered = filtered.filter(repo => {
+                    const haystack = [
+                        repo.name,
+                        repo.description || '',
+                        repo.language || '',
+                        repo.category.name,
+                        repo.allTags.join(' '),
+                        repo.readmeInfo?.summary || '',
+                        repo.readmeInfo?.content || ''
+                    ].join(' ').toLowerCase();
+                    return terms.every(term => haystack.includes(term));
+                });
+            }
+
+            // 4. Sort
+            const sortBy = document.getElementById('sortSelect').value;
+            filtered.sort((a, b) => {
+                if (sortBy === 'updated') return new Date(b.updated_at) - new Date(a.updated_at);
+                if (sortBy === 'created') return new Date(b.created_at) - new Date(a.created_at);
+                if (sortBy === 'stars') return (b.stargazers_count || 0) - (a.stargazers_count || 0);
+                if (sortBy === 'forks') return (b.forks_count || 0) - (a.forks_count || 0);
+                if (sortBy === 'name') return a.name.localeCompare(b.name);
+                return 0;
+            });
+
+            // Update Heading & Active Filter Pills
+            updateMainHeading(filtered.length);
+
+            const loadingEl = document.getElementById('loadingState');
+            const containerEl = document.getElementById('reposContainer');
+            const emptyEl = document.getElementById('emptyState');
+
+            loadingEl.classList.add('hidden');
+
+            if (filtered.length === 0) {
+                containerEl.classList.add('hidden');
+                emptyEl.classList.remove('hidden');
+                emptyEl.classList.add('flex');
+                return;
+            }
+
+            emptyEl.classList.add('hidden');
+            emptyEl.classList.remove('flex');
+            containerEl.classList.remove('hidden');
+
+            if (state.viewMode === 'tile') {
+                containerEl.className = 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4';
+                containerEl.innerHTML = filtered.map(repo => renderTileCard(repo)).join('');
+            } else {
+                containerEl.className = 'flex flex-col gap-2.5';
+                containerEl.innerHTML = filtered.map(repo => renderListRow(repo)).join('');
+            }
+        }
+
+        function renderTileCard(repo) {
+            const cat = repo.category;
+            const langColor = LANGUAGE_COLORS[repo.language] || '#94a3b8';
+            const descriptionText = repo.description || repo.readmeInfo?.summary || '説明文が設定されていません。クリックしてREADME.mdまたはリポジトリ詳細を確認できます。';
+            const relativeUpdated = formatRelativeTime(repo.updated_at);
+            const isRefreshing = Boolean(state.refreshingRepos[repo.full_name]);
+
+            // Private badge
+            const privateBadgeHtml = repo.private
+                ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1" title="あなたのみに表示されているプライベートリポジトリです"><i class="fa-solid fa-lock text-[9px]"></i>Private</span>`
+                : '';
+
+            // README badge
+            let readmeBadgeHtml = '';
+            if (repo.readmeInfo) {
+                if (repo.readmeInfo.isEmpty) {
+                    readmeBadgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="README.mdが空文字または未作成です">README空/無</span>`;
+                } else {
+                    readmeBadgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200" title="README.mdの記述を確認済み">README有</span>`;
+                }
+            }
+
+            // Extra extracted tags (up to 2 on card)
+            const extraTagsHtml = repo.allTags
+                .filter(t => t !== repo.language)
+                .slice(0, 2)
+                .map(t => `<span onclick="event.stopPropagation(); toggleTagFilter('${t.replace(/'/g, "\\'")}')" class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 cursor-pointer transition-colors">#${escapeHtml(t)}</span>`)
+                .join('');
+
+            return `
+                <article onclick="openReadmeModal('${repo.full_name}')" class="bg-white rounded-2xl border border-slate-200/90 p-5 flex flex-col justify-between hover:shadow-md hover:border-blue-300 transition-all cursor-pointer group">
+                    <div>
+                        <!-- Top Row: Icon, Title, Actions -->
+                        <div class="flex items-start justify-between gap-2 mb-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-10 h-10 rounded-xl ${cat.iconBg} flex items-center justify-center text-white shadow-2xs shrink-0">
+                                    <i class="${cat.icon} text-base"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h3 class="font-bold text-sm sm:text-base text-slate-800 group-hover:text-blue-600 transition-colors truncate" title="${escapeHtml(repo.name)}">
+                                        ${escapeHtml(repo.name)}
+                                    </h3>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-0.5 shrink-0">
+                                <button data-refresh-repo="${repo.full_name}" onclick="event.stopPropagation(); refreshSingleRepository('${repo.full_name}')" class="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors" title="このリポジトリのみ最新情報を再取得">
+                                    <i class="fa-solid fa-arrows-rotate text-xs ${isRefreshing ? 'fa-spin text-blue-600' : ''}"></i>
+                                </button>
+                                <button onclick="event.stopPropagation(); toggleFavorite('${repo.full_name}')" class="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-slate-100 transition-colors" title="お気に入り切替">
+                                    <i class="${repo.isFav ? 'fa-solid text-amber-400' : 'fa-regular'} fa-star text-xs"></i>
+                                </button>
+                                <a href="${repo.html_url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="GitHubで開く">
+                                    <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Description -->
+                        <p class="text-xs text-slate-600 leading-relaxed line-clamp-3 mb-4 min-h-[3.6em]">
+                            ${escapeHtml(descriptionText)}
+                        </p>
+                    </div>
+
+                    <div>
+                        <!-- Category & Extracted Tags Row -->
+                        <div class="flex items-center gap-1.5 flex-wrap mb-3.5">
+                            <span onclick="event.stopPropagation(); setNavFilter('cat:${cat.id}')" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${cat.badgeBg} hover:opacity-85 transition-opacity">
+                                ${cat.name}
+                            </span>
+                            ${privateBadgeHtml}
+                            ${readmeBadgeHtml}
+                            ${extraTagsHtml}
+                        </div>
+
+                        <!-- Language Dot -->
+                        <div class="flex items-center gap-2 text-xs text-slate-600 mb-3">
+                            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${langColor}"></span>
+                            <span class="truncate font-medium">${escapeHtml(repo.language || 'Markdown / Text')}</span>
+                            ${repo.homepage ? `<a href="${escapeHtml(repo.homepage)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="ml-auto text-[11px] text-blue-600 hover:underline flex items-center gap-1"><i class="fa-solid fa-link"></i>Demo</a>` : ''}
+                        </div>
+
+                        <!-- Footer Metadata: Stars, Forks, Relative Updated -->
+                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                            <div class="flex items-center gap-3.5">
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-regular fa-star text-slate-400"></i>
+                                    <span>${repo.stargazers_count || 0}</span>
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-code-fork text-slate-400"></i>
+                                    <span>${repo.forks_count || 0}</span>
+                                </span>
+                            </div>
+                            <span class="text-[11px] text-slate-400">更新 ${relativeUpdated}</span>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        function renderListRow(repo) {
+            const cat = repo.category;
+            const langColor = LANGUAGE_COLORS[repo.language] || '#94a3b8';
+            const descriptionText = repo.description || repo.readmeInfo?.summary || '説明文なし';
+            const relativeUpdated = formatRelativeTime(repo.updated_at);
+            const isRefreshing = Boolean(state.refreshingRepos[repo.full_name]);
+
+            return `
+                <div onclick="openReadmeModal('${repo.full_name}')" class="bg-white rounded-xl border border-slate-200/90 px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:shadow-xs hover:border-blue-300 transition-all cursor-pointer group">
+                    <div class="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+                        <div class="w-9 h-9 rounded-xl ${cat.iconBg} flex items-center justify-center text-white shrink-0">
+                            <i class="${cat.icon} text-sm"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <h3 class="font-bold text-sm text-slate-800 group-hover:text-blue-600 transition-colors truncate">${escapeHtml(repo.name)}</h3>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ${cat.badgeBg}">${cat.name}</span>
+                                ${repo.private ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200"><i class="fa-solid fa-lock text-[9px] mr-1"></i>Private</span>` : ''}
+                                ${repo.readmeInfo ? (repo.readmeInfo.isEmpty
+                                    ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">README空/無</span>`
+                                    : `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">README有</span>`
+                                ) : ''}
+                            </div>
+                            <p class="text-xs text-slate-500 truncate mt-1">${escapeHtml(descriptionText)}</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between sm:justify-end gap-4 text-xs text-slate-500 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full" style="background-color: ${langColor}"></span>
+                            <span>${escapeHtml(repo.language || 'Text')}</span>
+                        </div>
+                        <span class="flex items-center gap-1"><i class="fa-regular fa-star"></i> ${repo.stargazers_count || 0}</span>
+                        <span class="text-[11px] text-slate-400 w-20 text-right">更新 ${relativeUpdated}</span>
+                        <div class="flex items-center gap-1">
+                            <button data-refresh-repo="${repo.full_name}" onclick="event.stopPropagation(); refreshSingleRepository('${repo.full_name}')" class="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50" title="このリポジトリのみ最新情報を再取得">
+                                <i class="fa-solid fa-arrows-rotate ${isRefreshing ? 'fa-spin text-blue-600' : ''}"></i>
+                            </button>
+                            <button onclick="event.stopPropagation(); toggleFavorite('${repo.full_name}')" class="p-1.5 rounded-lg text-slate-400 hover:text-amber-500">
+                                <i class="${repo.isFav ? 'fa-solid text-amber-400' : 'fa-regular'} fa-star"></i>
+                            </button>
+                            <a href="${repo.html_url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateMainHeading(count) {
+            const titleEl = document.getElementById('currentViewTitle');
+            const iconEl = document.getElementById('currentViewIcon');
+            const badgeEl = document.getElementById('filteredCountBadge');
+            const pillsEl = document.getElementById('activeFilterPills');
+
+            badgeEl.textContent = `(${count} 件)`;
+
+            const titles = {
+                'all': { title: 'すべてのリポジトリ', icon: 'fa-solid fa-folder-open text-blue-600' },
+                'favorites': { title: 'お気に入りリポジトリ', icon: 'fa-solid fa-star text-amber-500' },
+                'recent': { title: '最近更新されたリポジトリ', icon: 'fa-solid fa-clock-rotate-left text-emerald-600' },
+                'private': { title: 'プライベートリポジトリ', icon: 'fa-solid fa-lock text-amber-600' },
+                'readme-valid': { title: 'README.md 記述あり（非空）', icon: 'fa-solid fa-file-circle-check text-emerald-600' },
+                'readme-empty': { title: 'README.md 空文字・未作成', icon: 'fa-solid fa-file-circle-xmark text-amber-500' }
+            };
+
+            if (titles[state.activeNav]) {
+                titleEl.textContent = titles[state.activeNav].title;
+                iconEl.className = `${titles[state.activeNav].icon} text-lg`;
+            } else if (state.activeNav.startsWith('cat:')) {
+                const catId = state.activeNav.replace('cat:', '');
+                const cat = CATEGORIES.find(c => c.id === catId);
+                if (cat) {
+                    titleEl.textContent = cat.name;
+                    iconEl.className = `${cat.icon} text-blue-600 text-lg`;
+                }
+            }
+
+            // Render active filter pills
+            let pillsHtml = '';
+            if (state.activeTag) {
+                pillsHtml += `
+                    <span class="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1.5">
+                        <span>タグ: ${escapeHtml(state.activeTag)}</span>
+                        <button onclick="clearTagFilter()" class="hover:text-blue-900"><i class="fa-solid fa-xmark"></i></button>
+                    </span>
+                `;
+            }
+            if (state.searchQuery.trim()) {
+                pillsHtml += `
+                    <span class="px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5">
+                        <span>検索: "${escapeHtml(state.searchQuery)}"</span>
+                        <button onclick="clearSearchInput()" class="hover:text-slate-900"><i class="fa-solid fa-xmark"></i></button>
+                    </span>
+                `;
+            }
+            pillsEl.innerHTML = pillsHtml;
+
+            // Highlight active sidebar button
+            document.querySelectorAll('#sidebar .nav-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-50', 'text-blue-600', 'font-semibold');
+                btn.classList.add('text-slate-600');
+            });
+            const activeBtn = document.getElementById(`nav-${state.activeNav}`);
+            if (activeBtn) {
+                activeBtn.classList.add('bg-blue-50', 'text-blue-600', 'font-semibold');
+                activeBtn.classList.remove('text-slate-600');
+            }
+        }
+
+        function setNavFilter(navKey) {
+            state.activeNav = navKey;
+            toggleMobileSidebar(false);
+            updateAllCountsAndRender();
+        }
+
+        function toggleTagFilter(tag) {
+            state.activeTag = (state.activeTag === tag) ? null : tag;
+            updateAllCountsAndRender();
+        }
+
+        function clearTagFilter() {
+            state.activeTag = null;
+            updateAllCountsAndRender();
+        }
+
+        function clearSearchInput() {
+            const input = document.getElementById('mainSearchInput');
+            input.value = '';
+            state.searchQuery = '';
+            document.getElementById('clearSearchBtn').classList.add('hidden');
+            renderRepositories();
+        }
+
+        function resetAllFilters() {
+            state.activeNav = 'all';
+            state.activeTag = null;
+            state.searchQuery = '';
+            state.tagSearchQuery = '';
+            document.getElementById('mainSearchInput').value = '';
+            document.getElementById('tagFilterInput').value = '';
+            document.getElementById('clearSearchBtn').classList.add('hidden');
+            updateAllCountsAndRender();
+        }
+
+        function setViewMode(mode) {
+            state.viewMode = mode;
+            localStorage.setItem('gh_explorer_viewmode', mode);
+            const tileBtn = document.getElementById('viewTileBtn');
+            const listBtn = document.getElementById('viewListBtn');
+            if (mode === 'tile') {
+                tileBtn.className = 'px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 bg-blue-600 text-white transition-colors';
+                listBtn.className = 'px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 text-slate-600 hover:text-slate-900 transition-colors';
+            } else {
+                listBtn.className = 'px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 bg-blue-600 text-white transition-colors';
+                tileBtn.className = 'px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 text-slate-600 hover:text-slate-900 transition-colors';
+            }
+            renderRepositories();
+        }
+
+        function toggleFavorite(fullName) {
+            const idx = state.favorites.indexOf(fullName);
+            if (idx >= 0) {
+                state.favorites.splice(idx, 1);
+            } else {
+                state.favorites.push(fullName);
+            }
+            localStorage.setItem('gh_explorer_favorites', JSON.stringify(state.favorites));
+            updateAllCountsAndRender();
+        }
+
+        // Open README Preview Modal & Fetch on demand if not yet cached
+        async function openReadmeModal(fullName) {
+            const enriched = getEnrichedRepositories();
+            const repo = enriched.find(r => r.full_name === fullName);
+            if (!repo) return;
+
+            state.currentModalFullName = fullName;
+
+            const modal = document.getElementById('readmeModal');
+            const iconBox = document.getElementById('modalRepoIcon');
+            const titleEl = document.getElementById('modalRepoTitle');
+            const privateBadge = document.getElementById('modalPrivateBadge');
+            const metaEl = document.getElementById('modalRepoMeta');
+            const ghLink = document.getElementById('modalGithubLink');
+            const tagsEl = document.getElementById('modalReadmeTags');
+            const bodyEl = document.getElementById('modalReadmeBody');
+
+            iconBox.className = `w-9 h-9 rounded-xl ${repo.category.iconBg} flex items-center justify-center text-white shrink-0`;
+            iconBox.innerHTML = `<i class="${repo.category.icon}"></i>`;
+            titleEl.textContent = repo.name;
+            if (privateBadge) {
+                privateBadge.classList.toggle('hidden', !repo.private);
+            }
+            metaEl.textContent = repo.description || '説明なし';
+            ghLink.href = repo.html_url;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            let readmeInfo = state.readmeMap[fullName];
+            if (!readmeInfo) {
+                bodyEl.innerHTML = `<div class="py-12 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>README.md を取得して空文字チェック中...</div>`;
+                readmeInfo = await fetchSingleReadme(repo);
+                updateAllCountsAndRender();
+            }
+
+            // Render status & extracted tags
+            let statusBadge = '';
+            if (!readmeInfo || readmeInfo.status === 'missing') {
+                statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">README.md 未作成 (404)</span>`;
+            } else if (readmeInfo.isEmpty) {
+                statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">README.md 空文字 (0文字)</span>`;
+            } else {
+                statusBadge = `<span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">README.md 記述あり (${readmeInfo.content.length.toLocaleString()} 文字)</span>`;
+            }
+
+            const tagPills = (readmeInfo?.tags || []).map(t =>
+                `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-medium">#${escapeHtml(t)}</span>`
+            ).join('');
+            tagsEl.innerHTML = statusBadge + tagPills;
+
+            if (!readmeInfo || readmeInfo.isEmpty) {
+                bodyEl.innerHTML = `
+                    <div class="py-12 text-center text-slate-500">
+                        <i class="fa-regular fa-file-lines text-3xl text-slate-300 mb-2 block"></i>
+                        <p class="font-semibold">このリポジトリには有効な README.md の記述がありません。</p>
+                        <p class="text-xs text-slate-400 mt-1">（ファイルが存在しないか、空白文字のみで構成されています）</p>
+                    </div>
+                `;
+            } else {
+                bodyEl.innerHTML = marked.parse(readmeInfo.content);
+            }
+        }
+
+        function closeReadmeModal() {
+            state.currentModalFullName = null;
+            const modal = document.getElementById('readmeModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // Settings Modal
+        function openSettingsModal() {
+            document.getElementById('settingsUsernameInput').value = state.username;
+            document.getElementById('settingsTokenInput').value = state.token;
+            const cachedReadmeCount = Object.keys(state.readmeMap).length;
+            document.getElementById('settingsCacheDetail').textContent =
+                `リポジトリキャッシュ: ${state.repositories.length} 件 / README解析キャッシュ: ${cachedReadmeCount} 件`;
+
+            const modal = document.getElementById('settingsModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeSettingsModal() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function saveTokenOnly() {
+            const newToken = document.getElementById('settingsTokenInput').value.trim();
+            const tokenChanged = newToken !== state.token;
+            state.token = newToken;
+            localStorage.setItem('gh_explorer_token', state.token);
+            closeSettingsModal();
+            if (tokenChanged) {
+                await loadUserAndRepositories(true);
+            } else {
+                showToast('設定を保存しました', 'success');
+            }
+        }
+
+        async function applySettingsAndReload() {
+            const newUsername = document.getElementById('settingsUsernameInput').value.trim() || detectOwnerUsername();
+            state.username = newUsername;
+            state.token = document.getElementById('settingsTokenInput').value.trim();
+            localStorage.setItem('gh_explorer_username', state.username);
+            localStorage.setItem('gh_explorer_token', state.token);
+            closeSettingsModal();
+            await loadUserAndRepositories(true);
+        }
+
+        async function confirmAndResetCache() {
+            closeSettingsModal();
+            showToast('ローカルキャッシュをクリアして再取得しています...', 'info');
+            await clearAllIndexedDBCache();
+            state.readmeMap = {};
+            await loadUserAndRepositories(true);
+        }
+
+        function exportBackupJson() {
+            if (!state.repositories || state.repositories.length === 0) {
+                showToast('出力できるリポジトリデータがありません', 'error');
+                return;
+            }
+            const data = {
+                username: state.username,
+                exportedAt: Date.now(),
+                repositories: state.repositories,
+                readmeMap: state.readmeMap,
+                favorites: state.favorites
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `github-repos-backup-${state.username}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('キャッシュデータをJSONファイルに出力しました', 'success');
+        }
+
+        function importBackupJson(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!Array.isArray(data.repositories)) {
+                        showToast('無効なバックアップJSONファイルです', 'error');
+                        return;
+                    }
+                    state.repositories = filterAccessibleRepos(data.repositories);
+                    if (data.readmeMap) {
+                        state.readmeMap = data.readmeMap;
+                        for (const [fullName, info] of Object.entries(data.readmeMap)) {
+                            await saveCachedReadme(fullName, info);
+                        }
+                    }
+                    await saveCachedRepos(state.username, state.repositories, { login: state.username });
+                    saveLocalBackup(state.username, state.repositories, { login: state.username });
+                    setRateLimitBanner(false);
+                    updateAllCountsAndRender();
+                    closeSettingsModal();
+                    showToast(`${state.repositories.length} 件のリポジトリデータをJSONから復元しました`, 'success');
+                } catch (err) {
+                    showToast('JSONファイルの読み込みに失敗しました', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function formatRelativeTime(isoDate) {
+            if (!isoDate) return '-';
+            const diffMs = Date.now() - new Date(isoDate).getTime();
+            const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            if (days <= 0) return '今日';
+            if (days < 7) return `${days}日前`;
+            if (days < 30) return `${Math.floor(days / 7)}週間前`;
+            if (days < 365) return `${Math.floor(days / 30)}ヶ月前`;
+            return `${Math.floor(days / 365)}年前`;
+        }
+
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function showLoadingSkeleton() {
+            const loadingEl = document.getElementById('loadingState');
+            const containerEl = document.getElementById('reposContainer');
+            containerEl.classList.add('hidden');
+            loadingEl.classList.remove('hidden');
+            loadingEl.innerHTML = Array.from({ length: 8 }).map(() => `
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse space-y-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-slate-200"></div>
+                        <div class="h-4 bg-slate-200 rounded w-1/2"></div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="h-3 bg-slate-100 rounded w-full"></div>
+                        <div class="h-3 bg-slate-100 rounded w-4/5"></div>
+                    </div>
+                    <div class="h-5 bg-slate-100 rounded-full w-24"></div>
+                    <div class="pt-3 border-t border-slate-100 flex justify-between">
+                        <div class="h-3 bg-slate-100 rounded w-16"></div>
+                        <div class="h-3 bg-slate-100 rounded w-16"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const colors = {
+                success: 'bg-slate-900 text-white border-slate-700',
+                error: 'bg-red-600 text-white border-red-700',
+                info: 'bg-blue-600 text-white border-blue-700'
+            };
+            const el = document.createElement('div');
+            el.className = `px-4 py-2.5 rounded-xl border shadow-lg text-xs font-medium flex items-center gap-2 transition-all duration-300 ${colors[type] || colors.info}`;
+            el.innerHTML = `<i class="fa-solid fa-circle-info"></i><span>${escapeHtml(message)}</span>`;
+            container.appendChild(el);
+            setTimeout(() => {
+                el.style.opacity = '0';
+                setTimeout(() => el.remove(), 300);
+            }, 3200);
+        }
+
+        function toggleMobileSidebar(show) {
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            const isHidden = sidebar.classList.contains('-translate-x-full');
+            const shouldShow = typeof show === 'boolean' ? show : isHidden;
+
+            if (shouldShow) {
+                sidebar.classList.remove('-translate-x-full');
+                backdrop.classList.remove('hidden');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                backdrop.classList.add('hidden');
+            }
+        }
+
+        function focusSearch() {
+            toggleMobileSidebar(false);
+            document.getElementById('mainSearchInput').focus();
+        }
+
+        // Wire up Event Listeners on DOM Ready
+        window.addEventListener('DOMContentLoaded', () => {
+            setViewMode(state.viewMode);
+
+            document.getElementById('mobileMenuBtn').addEventListener('click', () => toggleMobileSidebar());
+
+            // Main Search Input
+            const mainSearch = document.getElementById('mainSearchInput');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            mainSearch.addEventListener('input', (e) => {
+                state.searchQuery = e.target.value;
+                clearBtn.classList.toggle('hidden', !state.searchQuery);
+                renderRepositories();
+            });
+            clearBtn.addEventListener('click', clearSearchInput);
+
+            // Sidebar Tag Filter Input
+            const tagInput = document.getElementById('tagFilterInput');
+            tagInput.addEventListener('input', (e) => {
+                state.tagSearchQuery = e.target.value;
+                renderSidebarTags(getEnrichedRepositories());
+            });
+
+            // Keyboard shortcut '/' to focus search, 'Escape' to close modals
+            window.addEventListener('keydown', (e) => {
+                if (e.key === '/' && document.activeElement !== mainSearch && document.activeElement !== tagInput) {
+                    e.preventDefault();
+                    mainSearch.focus();
+                }
+                if (e.key === 'Escape') {
+                    closeReadmeModal();
+                    closeSettingsModal();
+                }
+            });
+
+            // Initial Data Load
+            loadUserAndRepositories(false);
+        });
+    </script>
+</body>
+</html>
