@@ -272,6 +272,25 @@
                 </div>
             </div>
 
+            <!-- Permanent Token Warning Banner (Private 0件やスコープ警告用) -->
+            <div id="tokenWarningBanner" class="hidden bg-red-50 border-b border-red-200 px-4 sm:px-6 lg:px-8 py-3 items-center justify-between gap-3 text-xs text-red-900 shrink-0">
+                <div class="flex items-center gap-2.5 flex-1 flex-wrap">
+                    <i class="fa-solid fa-triangle-exclamation text-red-600 text-sm shrink-0"></i>
+                    <span id="tokenWarningBannerText" class="font-medium leading-relaxed"></span>
+                </div>
+                <div class="flex items-center gap-2 shrink-0 flex-wrap">
+                    <a href="https://github.com/settings/tokens/new?scopes=repo&description=RepositoriesSearch" target="_blank" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-colors flex items-center gap-1.5 shadow-xs">
+                        <i class="fa-solid fa-key"></i><span>repo付きトークン作成</span>
+                    </a>
+                    <button onclick="openSettingsModal()" class="px-3 py-1.5 bg-white hover:bg-red-100 text-red-700 border border-red-300 rounded-xl font-semibold transition-colors">
+                        設定を開く
+                    </button>
+                    <button onclick="document.getElementById('tokenWarningBanner').classList.add('hidden'); document.getElementById('tokenWarningBanner').classList.remove('flex');" class="text-slate-400 hover:text-slate-600 p-1">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
             <!-- Sub-Header / Toolbar -->
             <div class="px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
                 <div class="flex items-center gap-2.5 flex-wrap">
@@ -1090,16 +1109,27 @@
                 const totalPrivateCount = state.repositories.filter(r => r.private).length;
 
                 if (useAuthenticatedEndpoint && totalPrivateCount === 0) {
-                    updateTokenDiagnosticUI(
-                        `認証成功 (@${state.username}) ですがプライベート検出が 0 件です。Classic PATなら「repo」スコープ、Fine-grained PATなら「Contents: Read-only」をご確認ください`,
-                        false
-                    );
-                    if (!silent) showToast('認証成功しましたがPrivateリポジトリが0件です。トークンに「repo」スコープがあるかご確認ください', 'error');
+                    const warnMsg = `認証成功 (@${state.username}) ですがプライベート検出が 0 件です。Classic PATなら「repo」スコープ、Fine-grained PATなら「Contents: Read-only」をご確認ください`;
+                    updateTokenDiagnosticUI(warnMsg, false);
+                    if (!silent) showToast(warnMsg, 'error');
+
+                    const warnBanner = document.getElementById('tokenWarningBanner');
+                    const warnText = document.getElementById('tokenWarningBannerText');
+                    if (warnBanner && warnText) {
+                        warnText.innerHTML = `<strong>【Privateリポジトリ取得の警告】</strong> GitHub API認証は成功（@${state.username}）しましたが、Privateリポジトリが 0件 です（Public ${state.repositories.length}件のみ取得）。<br>原因: 現在のトークンに <strong>「repo」スコープ</strong> が付与されていないため、GitHubがPrivateリポジトリを返していません。`;
+                        warnBanner.classList.remove('hidden');
+                        warnBanner.classList.add('flex');
+                    }
                 } else if (useAuthenticatedEndpoint) {
                     updateTokenDiagnosticUI(
                         `認証成功: 全 ${state.repositories.length} 件（Private ${totalPrivateCount} 件）`,
                         true
                     );
+                    const warnBanner = document.getElementById('tokenWarningBanner');
+                    if (warnBanner) {
+                        warnBanner.classList.add('hidden');
+                        warnBanner.classList.remove('flex');
+                    }
                 }
 
                 // 5. Fetch READMEs ONLY for newly discovered or updated repositories
