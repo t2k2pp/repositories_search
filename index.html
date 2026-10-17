@@ -957,7 +957,7 @@
 
                 while (page <= maxPages && !hitRateLimit) {
                     const endpoint = useAuthenticatedEndpoint
-                        ? `https://api.github.com/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&per_page=100&page=${page}&sort=updated&_t=${Date.now()}`
+                        ? `https://api.github.com/user/repos?visibility=all&per_page=100&page=${page}&sort=updated&_t=${Date.now()}`
                         : `https://api.github.com/users/${encodeURIComponent(state.username)}/repos?per_page=100&page=${page}&sort=updated&_t=${Date.now()}`;
 
                     let reposRes = await fetch(endpoint, {
@@ -965,6 +965,19 @@
                         cache: 'no-store'
                     });
                     updateRateLimitFromResponse(reposRes);
+
+                    // If /user/repos with visibility=all failed, retry once with default parameters before giving up
+                    if (!reposRes.ok && useAuthenticatedEndpoint) {
+                        const fallbackAuthUrl = `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&_t=${Date.now()}`;
+                        const retryRes = await fetch(fallbackAuthUrl, {
+                            headers: getGitHubHeaders(false, true),
+                            cache: 'no-store'
+                        });
+                        if (retryRes.ok) {
+                            reposRes = retryRes;
+                            updateRateLimitFromResponse(reposRes);
+                        }
+                    }
 
                     if (!reposRes.ok && useAuthenticatedEndpoint) {
                         useAuthenticatedEndpoint = false;
@@ -1169,7 +1182,8 @@
 
         function getGitHubHeaders(acceptRaw = false, includeToken = true) {
             const headers = {
-                'Accept': acceptRaw ? 'application/vnd.github.v3.raw' : 'application/vnd.github.v3+json'
+                'Accept': acceptRaw ? 'application/vnd.github.v3.raw' : 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28'
             };
             if (includeToken && state.token && state.token.trim() !== '') {
                 const rawToken = state.token.trim().replace(/^(Bearer|token)\s+/i, '');
