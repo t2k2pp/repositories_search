@@ -420,7 +420,13 @@
                         <label class="block text-xs font-bold text-slate-700">GitHub Personal Access Token (ご本人・プライベート表示用)</label>
                         <span id="rateLimitDisplay" class="text-[11px] text-slate-500 font-medium">API残数: 未確認</span>
                     </div>
-                    <input type="password" id="settingsTokenInput" placeholder="ghp_... または github_pat_... (未入力時は公開リポジトリのみ表示)" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
+                    <div class="flex gap-2">
+                        <input type="password" id="settingsTokenInput" placeholder="ghp_... または github_pat_... (未入力時は公開リポジトリのみ表示)" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
+                        <button type="button" onclick="testTokenConnection()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shrink-0 flex items-center gap-1.5 shadow-xs transition-colors" title="入力されたトークンの権限とプライベート取得可否をテストします">
+                            <i class="fa-solid fa-stethoscope"></i>
+                            <span>接続テスト</span>
+                        </button>
+                    </div>
                     <div id="tokenDiagnosticBox" class="mt-2 px-3 py-2 rounded-lg bg-slate-100 text-[11px] text-slate-600 flex items-center justify-between">
                         <span id="tokenDiagnosticText">トークン状態: 未設定（公開リポジトリのみ取得）</span>
                     </div>
@@ -980,6 +986,13 @@
                     }
 
                     if (!reposRes.ok && useAuthenticatedEndpoint) {
+                        let errMsg = `HTTP ${reposRes.status}`;
+                        try {
+                            const errBody = await reposRes.json();
+                            if (errBody && errBody.message) errMsg += `: ${errBody.message}`;
+                        } catch (_) {}
+                        console.warn('/user/repos failed:', errMsg);
+                        if (!silent) showToast(`プライベート取得エンドポイントでエラー (${errMsg})。公開リポジトリを取得します`, 'error');
                         useAuthenticatedEndpoint = false;
                         const fallbackUrl = `https://api.github.com/users/${encodeURIComponent(state.username)}/repos?per_page=100&page=${page}&sort=updated`;
                         reposRes = await fetch(fallbackUrl, { headers: getGitHubHeaders(false, false) });
@@ -1002,9 +1015,12 @@
                     page++;
                 }
 
-                // Keep repositories owned by user (or all accessible private/public repos when authenticated as owner)
-                const targetOwner = (state.authenticatedUser || state.username).toLowerCase();
-                fetchedRepos = fetchedRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === targetOwner || r.owner.login.toLowerCase() === state.username.toLowerCase());
+                // If unauthenticated (public endpoint), filter by username.
+                // When authenticated (/user/repos), KEEP ALL returned repositories so private/org repos are never lost!
+                if (!useAuthenticatedEndpoint) {
+                    const targetOwner = state.username.toLowerCase();
+                    fetchedRepos = fetchedRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === targetOwner);
+                }
 
                 if (!apiSucceeded) {
                     if (hitRateLimit) {
@@ -1034,9 +1050,16 @@
 
                 if (useAuthenticatedEndpoint && totalPrivateCount === 0) {
                     updateTokenDiagnosticUI(
-                        `認証済み (@${state.username}) ですがプライベート検出が 0 件です。トークンに repo 権限があるか確認してください`,
+                        `認証成功 (@${state.username}) ですがプライベート検出が 0 件です。Classic PATなら「repo」スコープ、Fine-grained PATなら「Contents: Read-only」をご確認ください`,
                         false
                     );
+                    if (!silent) showToast('認証成功しましたがPrivateリポジトリが0件です。トークンに「repo」スコープがあるかご確認ください', 'error');
+                } else if (useAuthenticatedEndpoint) {
+                    updateTokenDiagnosticUI(
+                        `認証成功: 全 ${state.repositories.length} 件（Private ${totalPrivateCount} 件）`,
+                        true
+                    );
+                }
                 }
 
                 // 5. Fetch READMEs ONLY for newly discovered or updated repositories
@@ -1187,7 +1210,11 @@
             };
             if (includeToken && state.token && state.token.trim() !== '') {
                 const rawToken = state.token.trim().replace(/^(Bearer|token)\s+/i, '');
-                headers['Authorization'] = `Bearer ${rawToken}`;
+                if (rawToken.startsWith('ghp_')) {
+                    headers['Authorization'] = `token ${rawToken}`;
+                } else {
+                    headers['Authorization'] = `Bearer ${rawToken}`;
+                }
             }
             return headers;
         }
@@ -1992,13 +2019,107 @@
             modal.classList.remove('flex');
         }
 
+        // Test Token Connection directly against GitHub API
+        async function testTokenConnection() {
+            const tokenInput = document.getElementById('settingsTokenInput');
+            const tokenVal = tokenInput ? tokenInput.value.trim() : state.token;
+
+            if (!tokenVal) {
+                updateTokenDiagnosticUI('トークンが未入力です。トークンを貼り付けてください', false);
+                showToast('トークンが未入力です', 'error');
+                return;
+            }
+
+            updateTokenDiagnosticUI('GitHub API接続テスト中...', null);
+            showToast('トークンをテストしています...', 'info');
+
+            const rawToken = tokenVal.replace(/^(Bearer|token)\s+/i, '');
+            const authHeader = rawToken.startsWith('ghp_') ? `token ${rawToken}` : `Bearer ${rawToken}`;
+
+            try {
+                // Test 1: GET /user
+                const userRes = await fetch('https://api.github.com/user', {
+                    headers: {
+                        'Authorization': authHeader,
+                        'Accept': 'application/vnd.github+json',
+                        'X-GitHub-Api-Version': '2022-11-28'
+                    },
+                    cache: 'no-store'
+                });
+
+                const scopes = userRes.headers.get('x-oauth-scopes') || '(なし/Fine-grained)';
+                let userLogin = '';
+                if (userRes.ok) {
+                    const uData = await userRes.json();
+                    userLogin = uData.login || '';
+                }
+
+                // Test 2: GET /user/repos
+                const reposRes = await fetch('https://api.github.com/user/repos?visibility=all&per_page=100&_t=' + Date.now(), {
+                    headers: {
+                        'Authorization': authHeader,
+                        'Accept': 'application/vnd.github+json',
+                        'X-GitHub-Api-Version': '2022-11-28'
+                    },
+                    cache: 'no-store'
+                });
+
+                let repoOk = reposRes.ok;
+                let reposData = [];
+                let repoErrMsg = '';
+                if (repoOk) {
+                    reposData = await reposRes.json();
+                } else {
+                    try {
+                        const errJ = await reposRes.json();
+                        repoErrMsg = errJ.message || `HTTP ${reposRes.status}`;
+                    } catch (_) {
+                        repoErrMsg = `HTTP ${reposRes.status}`;
+                    }
+                }
+
+                const totalInPage = Array.isArray(reposData) ? reposData.length : 0;
+                const privInPage = Array.isArray(reposData) ? reposData.filter(r => r.private).length : 0;
+
+                if (userRes.status === 401 || reposRes.status === 401) {
+                    const msg = `【認証失敗 HTTP 401】トークン文字列が無効または有効期限切れです`;
+                    updateTokenDiagnosticUI(msg, false);
+                    showToast(msg, 'error');
+                } else if (!repoOk) {
+                    const msg = `【リポジトリ取得失敗 HTTP ${reposRes.status}】${repoErrMsg}`;
+                    updateTokenDiagnosticUI(msg, false);
+                    showToast(msg, 'error');
+                } else if (privInPage === 0 && totalInPage > 0) {
+                    const msg = `【認証OK・Private 0件】1ページ目(${totalInPage}件中)にPrivateがありません。Classic PATの場合は「repo」スコープ、Fine-grained PATの場合は「Contents: Read-only」を付けて再生成してください（検出スコープ: ${scopes}）`;
+                    updateTokenDiagnosticUI(msg, false);
+                    showToast(msg, 'error');
+                } else {
+                    const msg = `【接続成功！】認証: @${userLogin || state.username} | スコープ: ${scopes} | 1ページ目にPrivate ${privInPage} 件を検出！`;
+                    updateTokenDiagnosticUI(msg, true);
+                    showToast(msg, 'success');
+                }
+            } catch (err) {
+                const errText = `通信エラー: ${err.message}`;
+                updateTokenDiagnosticUI(errText, false);
+                showToast(errText, 'error');
+            }
+        }
+
         // Settings Modal
         function openSettingsModal() {
             document.getElementById('settingsUsernameInput').value = state.username;
             document.getElementById('settingsTokenInput').value = state.token;
             const cachedReadmeCount = Object.keys(state.readmeMap).length;
+            const privCount = state.repositories.filter(r => r.private).length;
             document.getElementById('settingsCacheDetail').textContent =
-                `リポジトリキャッシュ: ${state.repositories.length} 件 / README解析キャッシュ: ${cachedReadmeCount} 件`;
+                `リポジトリキャッシュ: ${state.repositories.length} 件 (Private ${privCount} 件) / README解析キャッシュ: ${cachedReadmeCount} 件`;
+
+            if (state.token && state.token.trim() !== '') {
+                const tokenType = state.token.trim().startsWith('ghp_') ? 'Classic PAT (ghp_...)' : 'Fine-grained PAT (github_pat_...)';
+                updateTokenDiagnosticUI(`トークン設定中: ${tokenType} (「接続テスト」で権限とPrivate取得可否を即座に確認できます)`, null);
+            } else {
+                updateTokenDiagnosticUI('トークン状態: 未設定（公開リポジトリのみ取得）', null);
+            }
 
             const modal = document.getElementById('settingsModal');
             modal.classList.remove('hidden');
