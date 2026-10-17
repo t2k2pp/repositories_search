@@ -806,10 +806,16 @@
             // Load cached READMEs first
             state.readmeMap = await getAllCachedReadmes();
 
+            const hasToken = Boolean(state.token && state.token.trim() !== '');
             // Always prepare existing cache/backup so we never overwrite valid data with 0 items on rate-limit
             const existingCache = await getCachedRepos(username) || loadLocalBackup(username);
 
-            if (!forceRefresh && existingCache && existingCache.repos && existingCache.repos.length > 0) {
+            // Check if cache has private repos or is expired
+            const isCacheExpired = existingCache?.updatedAt ? (Date.now() - existingCache.updatedAt > CACHE_TTL_MS) : false;
+            const cacheHasPrivate = existingCache?.repos?.some(r => r.private);
+            const needsRefetchForPrivate = hasToken && !cacheHasPrivate;
+
+            if (!forceRefresh && existingCache && existingCache.repos && existingCache.repos.length > 0 && !isCacheExpired && !needsRefetchForPrivate) {
                 state.repositories = filterAccessibleRepos(existingCache.repos);
                 updateProfileUI(existingCache.userProfile, existingCache.updatedAt, true);
                 updateAllCountsAndRender();
@@ -821,12 +827,11 @@
 
             try {
                 let userProfile = existingCache?.userProfile || { login: username, name: username, avatar_url: `https://github.com/${username}.png` };
-                let useAuthenticatedEndpoint = false;
                 let hitRateLimit = false;
                 let rateLimitReset = null;
 
-                // 1. If token is configured, silently verify whether the viewer is the authenticated owner
-                if (state.token && state.token.trim() !== '') {
+                // 1. If token is configured, try to fetch user info from /user
+                if (hasToken) {
                     try {
                         const authRes = await fetch('https://api.github.com/user', {
                             headers: getGitHubHeaders(false, true)
@@ -835,51 +840,54 @@
                         if (authRes.ok) {
                             const authUser = await authRes.json();
                             state.authenticatedUser = authUser.login;
-                            if (authUser.login && authUser.login.toLowerCase() === username.toLowerCase()) {
-                                useAuthenticatedEndpoint = true;
-                                userProfile = authUser;
-                            }
-                        } else {
-                            state.authenticatedUser = null;
+                            userProfile = authUser;
                         }
                     } catch (_) {
-                        state.authenticatedUser = null;
-                    }
-                } else {
-                    state.authenticatedUser = null;
-                }
-
-                // 2. If not using the authenticated owner profile, fetch public profile safely
-                if (!useAuthenticatedEndpoint) {
-                    const userRes = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}`, {
-                        headers: getGitHubHeaders(false, false)
-                    });
-                    updateRateLimitFromResponse(userRes);
-                    if (userRes.ok) {
-                        userProfile = await userRes.json();
-                    } else if (userRes.status === 403 || userRes.status === 429) {
-                        hitRateLimit = true;
-                        rateLimitReset = userRes.headers.get('x-ratelimit-reset');
+                        // Fine-grained PAT without user-profile permission may fail, but continue
                     }
                 }
 
-                // 3. Fetch repositories based on viewer permission
+                // 2. If profile is still not fully resolved, fetch public profile safely
+                if (!userProfile || !userProfile.id || (userProfile.login && userProfile.login.toLowerCase() !== username.toLowerCase())) {
+                    try {
+                        const userRes = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}`, {
+                            headers: getGitHubHeaders(false, false)
+                        });
+                        updateRateLimitFromResponse(userRes);
+                        if (userRes.ok) {
+                            userProfile = await userRes.json();
+                        } else if (userRes.status === 403 || userRes.status === 429) {
+                            hitRateLimit = true;
+                            rateLimitReset = userRes.headers.get('x-ratelimit-reset');
+                        }
+                    } catch (_) {}
+                }
+
+                // 3. Fetch repositories: When token exists, ALWAYS query /user/repos with visibility=all to fetch private repos
                 let allRepos = [];
                 let page = 1;
                 let apiSucceeded = false;
+                const maxPages = 10; // Up to 1000 repositories
 
-                while (page <= 3 && !hitRateLimit) {
-                    const endpoint = useAuthenticatedEndpoint
-                        ? `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner`
-                        : `https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=updated`;
+                while (page <= maxPages && !hitRateLimit) {
+                    let endpoint;
+                    let useAuth = false;
+
+                    if (hasToken) {
+                        endpoint = `https://api.github.com/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&sort=updated&per_page=100&page=${page}`;
+                        useAuth = true;
+                    } else {
+                        endpoint = `https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=updated`;
+                        useAuth = false;
+                    }
 
                     let reposRes = await fetch(endpoint, {
-                        headers: getGitHubHeaders(false, useAuthenticatedEndpoint)
+                        headers: getGitHubHeaders(false, useAuth)
                     });
                     updateRateLimitFromResponse(reposRes);
 
-                    if (!reposRes.ok && useAuthenticatedEndpoint) {
-                        useAuthenticatedEndpoint = false;
+                    // If /user/repos failed due to token issues, fallback to public endpoint
+                    if (!reposRes.ok && hasToken) {
                         const fallbackUrl = `https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=updated`;
                         reposRes = await fetch(fallbackUrl, { headers: getGitHubHeaders(false, false) });
                         updateRateLimitFromResponse(reposRes);
@@ -901,7 +909,9 @@
                     page++;
                 }
 
-                allRepos = allRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === username.toLowerCase());
+                // Filter to user-owned repositories
+                const targetUser = (state.authenticatedUser || username).toLowerCase();
+                allRepos = allRepos.filter(r => !r.owner || r.owner.login.toLowerCase() === targetUser || r.owner.login.toLowerCase() === username.toLowerCase());
                 const accessibleRepos = filterAccessibleRepos(allRepos);
 
                 // Critical guard: Never overwrite existing cached repos with 0 items when rate-limited or failed
@@ -918,7 +928,7 @@
 
                 if (hitRateLimit && accessibleRepos.length === 0) {
                     setRateLimitBanner(true, rateLimitReset);
-                    showToast('GitHub APIのレート制限に達しています。少し待つかトークンを設定してください', 'error');
+                    showToast('GitHub APIのレート制限に達しています。少し待つか有効なトークンを設定してください', 'error');
                     updateAllCountsAndRender();
                     return;
                 }
@@ -926,7 +936,7 @@
                 setRateLimitBanner(false);
                 state.repositories = accessibleRepos;
 
-                // Only persist to IndexedDB & backup when we actually got repository items
+                // Persist to IndexedDB & backup
                 if (state.repositories.length > 0) {
                     await saveCachedRepos(username, state.repositories, userProfile);
                     saveLocalBackup(username, state.repositories, userProfile);
@@ -1039,7 +1049,14 @@
                 'Accept': acceptRaw ? 'application/vnd.github.v3.raw' : 'application/vnd.github.v3+json'
             };
             if (includeToken && state.token && state.token.trim() !== '') {
-                headers['Authorization'] = `token ${state.token.trim()}`;
+                let tokenVal = state.token.trim();
+                if (tokenVal.startsWith('Bearer ')) {
+                    headers['Authorization'] = tokenVal;
+                } else if (tokenVal.startsWith('token ')) {
+                    headers['Authorization'] = `Bearer ${tokenVal.substring(6).trim()}`;
+                } else {
+                    headers['Authorization'] = `Bearer ${tokenVal}`;
+                }
             }
             return headers;
         }
@@ -1865,15 +1882,11 @@
 
         async function saveTokenOnly() {
             const newToken = document.getElementById('settingsTokenInput').value.trim();
-            const tokenChanged = newToken !== state.token;
             state.token = newToken;
             localStorage.setItem('gh_explorer_token', state.token);
             closeSettingsModal();
-            if (tokenChanged) {
-                await loadUserAndRepositories(true);
-            } else {
-                showToast('設定を保存しました', 'success');
-            }
+            showToast('設定を保存しました。リポジトリを再取得しています...', 'info');
+            await loadUserAndRepositories(true);
         }
 
         async function applySettingsAndReload() {
